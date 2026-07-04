@@ -2,9 +2,46 @@ import { useState } from 'react'
 import { Zap, Mail, Lock, Eye, EyeOff, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 
-const PROVIDERS = ['MERALCO', 'VECO', 'DAVAO LIGHT', 'CEBECO', 'Other']
-const REGIONS = ['Metro Manila', 'Cebu', 'Davao', 'Iloilo', 'Other']
-const HOUSEHOLD_TYPES = ['Studio / 1BR', '2 Bedroom', '3 Bedroom+', 'Bungalow/House']
+export const PROVIDERS = [
+  { id: 1, name: 'Meralco' },
+  { id: 2, name: 'Visayan Electric (VECO)' },
+  { id: 3, name: 'Davao Light and Power Company' },
+  { id: 4, name: 'Cagayan Electric Power and Light Co. (CEPALCO)' },
+  { id: 5, name: 'Iloilo Electric Cooperative (ILECO)' },
+  { id: 6, name: 'Negros Occidental Electric Cooperative (NOCECO)' },
+  { id: 7, name: 'Zamboanga City Electric Cooperative (ZAMCELCO)' },
+  { id: 8, name: 'Other / Not Listed' },
+  { id: 9, name: 'Mactan Electric Company' }, 
+];
+
+// Must match the `regions` table exactly (id + name)
+export const REGIONS = [
+  { id: 1,  name: 'National Capital Region' },
+  { id: 2,  name: 'Cordillera Administrative Region' },
+  { id: 3,  name: 'Ilocos Region' },
+  { id: 4,  name: 'Cagayan Valley' },
+  { id: 5,  name: 'Central Luzon' },
+  { id: 6,  name: 'Calabarzon' },
+  { id: 7,  name: 'Mimaropa' },
+  { id: 8,  name: 'Bicol Region' },
+  { id: 9,  name: 'Western Visayas' },
+  { id: 10, name: 'Central Visayas' },
+  { id: 11, name: 'Eastern Visayas' },
+  { id: 12, name: 'Zamboanga Peninsula' },
+  { id: 13, name: 'Northern Mindanao' },
+  { id: 14, name: 'Davao Region' },
+  { id: 15, name: 'Soccsksargen' },
+  { id: 16, name: 'Caraga' },
+  { id: 17, name: 'Bangsamoro Autonomous Region in Muslim Mindanao' },
+];
+
+// Frontend-only, never touches the database — no ids needed unless you want them
+export const HOUSEHOLD_TYPES = [
+  'Studio / 1BR',
+  '2 Bedroom',
+  '3 Bedroom+',
+  'Bungalow/House',
+];
 
 export default function Login() {
   const [mode, setMode] = useState('signin') // 'signin' | 'register'
@@ -18,8 +55,8 @@ export default function Login() {
     password: '',
     confirmPassword: '',
     remember: false,
-    provider: PROVIDERS[0],
-    region: REGIONS[0],
+    provider: PROVIDERS[0].id,
+    region: REGIONS[0].id,
     householdType: HOUSEHOLD_TYPES[0],
   })
 
@@ -61,21 +98,24 @@ export default function Login() {
     setStep('onboarding')
   }
 
-  async function handleCompleteOnboarding(e) {
-    e.preventDefault()
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        provider: form.provider,
-        region: form.region,
-        household_type: form.householdType,
-      })
-    }
-    setLoading(false)
-    window.location.href = '/dashboard'
+async function handleCompleteOnboarding(e) {
+  e.preventDefault()
+  setLoading(true)
+  const { data: { user } } = await supabase.auth.getUser()
+  console.log('Current user:', user)
+  if (user) {
+    const { data, error } = await supabase.from('profiles').upsert({
+      id: user.id,
+      provider_id: form.provider,
+      region_id: form.region,
+      household_type: form.householdType,
+      user_email: form.email,
+    })
+    console.log('Upsert result:', data, error)
   }
+  setLoading(false)
+  window.location.href = '/dashboard'
+}
 
   return (
     <div className="h-screen flex overflow-hidden">
@@ -289,7 +329,9 @@ export default function Login() {
                       onChange={update('provider')}
                       className="w-full appearance-none px-4 pr-10 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 outline-none"
                     >
-                      {PROVIDERS.map((p) => <option key={p}>{p}</option>)}
+                      {PROVIDERS.map((p) => (
+  <option key={p.id} value={p.id}>{p.name}</option>
+))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
@@ -304,7 +346,9 @@ export default function Login() {
                       onChange={update('region')}
                       className="w-full appearance-none px-4 pr-10 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 outline-none"
                     >
-                      {REGIONS.map((r) => <option key={r}>{r}</option>)}
+                      {REGIONS.map((r) => (
+  <option key={r.id} value={r.id}>{r.name}</option>
+))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
