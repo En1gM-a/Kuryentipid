@@ -385,11 +385,6 @@ async function handleCompleteOnboarding(e) {
               </form>
             </>
           )}
-
-          <p className="text-center text-sm text-gray-400 mt-8">
-            Having trouble?{' '}
-            <a href="#" className="text-primary font-medium hover:underline">Contact Support</a>
-          </p>
         </div>
       </div>
     </div>
