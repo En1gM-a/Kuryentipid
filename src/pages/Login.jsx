@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Zap, Mail, Lock, Eye, EyeOff, ChevronDown } from 'lucide-react'
+import { Zap, Mail, Lock, Eye, EyeOff, ChevronDown, User } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 
 export const PROVIDERS = [
@@ -11,7 +11,7 @@ export const PROVIDERS = [
   { id: 6, name: 'Negros Occidental Electric Cooperative (NOCECO)' },
   { id: 7, name: 'Zamboanga City Electric Cooperative (ZAMCELCO)' },
   { id: 8, name: 'Other / Not Listed' },
-  { id: 9, name: 'Mactan Electric Company' }, 
+  { id: 9, name: 'Mactan Electric Company' },
 ];
 
 // Must match the `regions` table exactly (id + name)
@@ -51,12 +51,13 @@ export default function Login() {
   const [error, setError] = useState('')
 
   const [form, setForm] = useState({
+    fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
     remember: false,
-    provider: PROVIDERS[0].id,
-    region: REGIONS[0].id,
+    provider: PROVIDERS[0],
+    region: REGIONS[0],
     householdType: HOUSEHOLD_TYPES[0],
   })
 
@@ -89,6 +90,9 @@ export default function Login() {
     const { error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
+      options: {
+        data: { full_name: form.fullName },
+      },
     })
     setLoading(false)
     if (error) {
@@ -98,28 +102,29 @@ export default function Login() {
     setStep('onboarding')
   }
 
-async function handleCompleteOnboarding(e) {
-  e.preventDefault()
-  setLoading(true)
-  const { data: { user } } = await supabase.auth.getUser()
-  console.log('Current user:', user)
-  if (user) {
-    const { data, error } = await supabase.from('profiles').upsert({
-      id: user.id,
-      provider_id: form.provider,
-      region_id: form.region,
-      household_type: form.householdType,
-      user_email: form.email,
-    })
-    console.log('Upsert result:', data, error)
+  async function handleCompleteOnboarding(e) {
+    e.preventDefault()
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    console.log('Current user:', user)
+    if (user) {
+      const { data, error } = await supabase.from('profiles').upsert({
+        id: user.id,
+        full_name: form.fullName,
+        provider_id: form.provider,
+        region_id: form.region,
+        household_type: form.householdType,
+        user_email: form.email,
+      })
+      console.log('Upsert result:', data, error)
+    }
+    setLoading(false)
+    window.location.href = '/dashboard'
   }
-  setLoading(false)
-  window.location.href = '/dashboard'
-}
 
   return (
     <div className="h-screen flex overflow-hidden">
-      {/*Left panel*/}
+      {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-50 to-blue-100 flex-col justify-center items-center px-16 relative">
         <div className="max-w-md">
           <div className="flex items-center gap-3 mb-10">
@@ -160,7 +165,7 @@ async function handleCompleteOnboarding(e) {
         </div>
       </div>
 
-      {/*Right panel*/}
+      {/* Right panel */}
       <div className="w-full lg:w-1/2 h-full overflow-y-auto flex flex-col justify-center items-center px-6 py-12 bg-white">
         <div className="w-full max-w-md">
 
@@ -200,6 +205,25 @@ async function handleCompleteOnboarding(e) {
               </div>
 
               <form onSubmit={mode === 'signin' ? handleSignIn : handleRegister} className="space-y-5">
+                {mode === 'register' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Juan Dela Cruz"
+                        value={form.fullName}
+                        onChange={update('fullName')}
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Email Address
@@ -291,21 +315,6 @@ async function handleCompleteOnboarding(e) {
                   {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
                 </button>
               </form>
-
-              <div className="flex items-center gap-3 my-7">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-xs text-gray-400 tracking-wide">OR CONTINUE WITH</span>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button className="py-2.5 rounded-xl border border-gray-200 font-medium text-gray-700 hover:bg-gray-50 transition">
-                  Google
-                </button>
-                <button className="py-2.5 rounded-xl border border-gray-200 font-medium text-gray-700 hover:bg-gray-50 transition">
-                  Facebook
-                </button>
-              </div>
             </>
           )}
 
@@ -330,8 +339,8 @@ async function handleCompleteOnboarding(e) {
                       className="w-full appearance-none px-4 pr-10 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 outline-none"
                     >
                       {PROVIDERS.map((p) => (
-  <option key={p.id} value={p.id}>{p.name}</option>
-))}
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
@@ -347,8 +356,8 @@ async function handleCompleteOnboarding(e) {
                       className="w-full appearance-none px-4 pr-10 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 outline-none"
                     >
                       {REGIONS.map((r) => (
-  <option key={r.id} value={r.id}>{r.name}</option>
-))}
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>

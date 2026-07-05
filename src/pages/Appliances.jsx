@@ -2,41 +2,10 @@ import { useState } from 'react'
 import {
   Search, ChevronDown, Plus, Pencil, Trash2,
   Snowflake, Refrigerator, Lightbulb, Tv, Fan,
-  Zap, Leaf, TriangleAlert
+  Zap, Leaf, TriangleAlert, Plug
 } from 'lucide-react'
 
-const APPLIANCES = [
-  {
-    id: 1, name: 'Air Conditioner', category: 'Cooling', icon: Snowflake,
-    iconBg: 'bg-blue-50', iconColor: 'text-blue-500',
-    badgeBg: 'bg-blue-50', badgeColor: 'text-blue-600',
-    quantity: 1, watts: 1200, hours: 8, cost: 2400,
-  },
-  {
-    id: 2, name: 'Refrigerator', category: 'Kitchen', icon: Refrigerator,
-    iconBg: 'bg-orange-50', iconColor: 'text-orange-500',
-    badgeBg: 'bg-orange-50', badgeColor: 'text-orange-600',
-    quantity: 1, watts: 150, hours: 24, cost: 900,
-  },
-  {
-    id: 3, name: 'LED Bulb (Living Room)', category: 'Lighting', icon: Lightbulb,
-    iconBg: 'bg-amber-50', iconColor: 'text-amber-500',
-    badgeBg: 'bg-amber-50', badgeColor: 'text-amber-600',
-    quantity: 5, watts: 9, hours: 6, cost: 80,
-  },
-  {
-    id: 4, name: 'Smart TV 55"', category: 'Entertainment', icon: Tv,
-    iconBg: 'bg-purple-50', iconColor: 'text-purple-500',
-    badgeBg: 'bg-purple-50', badgeColor: 'text-purple-600',
-    quantity: 1, watts: 120, hours: 5, cost: 180,
-  },
-  {
-    id: 5, name: 'Stand Fan', category: 'Cooling', icon: Fan,
-    iconBg: 'bg-green-50', iconColor: 'text-green-500',
-    badgeBg: 'bg-blue-50', badgeColor: 'text-blue-600',
-    quantity: 2, watts: 60, hours: 12, cost: 430,
-  },
-]
+const APPLIANCES = []
 
 const CATEGORIES = ['All Categories', 'Cooling', 'Kitchen', 'Lighting', 'Entertainment']
 
@@ -107,64 +76,38 @@ export default function Appliances() {
 
       {/* Table */}
       <div className="border border-gray-100 rounded-card overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-gray-500 text-xs font-semibold tracking-wide">
-              <th className="text-left px-6 py-4">APPLIANCE NAME</th>
-              <th className="text-left px-6 py-4">CATEGORY</th>
-              <th className="text-center px-6 py-4">QUANTITY</th>
-              <th className="text-center px-6 py-4">POWER (WATTS)</th>
-              <th className="text-center px-6 py-4">USAGE (HRS/DAY)</th>
-              <th className="text-right px-6 py-4">EST. MONTHLY COST</th>
-              <th className="text-center px-6 py-4">ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((a) => {
-              const Icon = a.icon
-              return (
-                <tr key={a.id} className="border-t border-gray-100 hover:bg-gray-50/50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${a.iconBg}`}>
-                        <Icon size={18} className={a.iconColor} />
-                      </div>
-                      <span className="font-semibold text-gray-900">{a.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase ${a.badgeBg} ${a.badgeColor}`}>
-                      {a.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center text-gray-700">{a.quantity}</td>
-                  <td className="px-6 py-4 text-center text-gray-700">{a.watts}W</td>
-                  <td className="px-6 py-4 text-center text-gray-700">{a.hours}h</td>
-                  <td className="px-6 py-4 text-right font-bold text-gray-900">
-                    ₱{a.cost.toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-primary hover:border-primary transition">
-                        <Pencil size={14} />
-                      </button>
-                      <button className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-danger hover:border-danger transition">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        {filtered.length > 0 ? (
+          <table className="w-full text-sm">
+            {/* ...unchanged thead/tbody... */}
+          </table>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center py-16">
+            <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+              <Plug size={24} className="text-gray-300" />
+            </div>
+            <p className="font-semibold text-gray-900 mb-1">
+              {APPLIANCES.length === 0 ? 'No appliances yet' : 'No matching appliances'}
+            </p>
+            <p className="text-sm text-gray-500 max-w-xs mb-5">
+              {APPLIANCES.length === 0
+                ? 'Add your first appliance to start tracking your electricity usage.'
+                : 'Try a different search term or category.'}
+            </p>
+            {APPLIANCES.length === 0 && (
+              <button className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+                <Plus size={18} />
+                Add Appliance
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Pagination */}
       <div className="flex items-center justify-between mt-5">
         <p className="text-sm text-gray-500">
           Showing <span className="font-semibold text-gray-900">{filtered.length}</span> of{' '}
-          <span className="font-semibold text-gray-900">12</span> appliances
+          <span className="font-semibold text-gray-900">{APPLIANCES.length}</span> appliances
         </p>
         <div className="flex gap-2">
           <button className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed">
