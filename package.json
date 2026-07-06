@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "import-presyo": "node scripts/importPresyo.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

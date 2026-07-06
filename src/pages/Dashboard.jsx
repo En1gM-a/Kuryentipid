@@ -7,18 +7,15 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../lib/supabaseClient'
-import { PROVIDERS } from './Login'
 
 // ============================================================
-// ESTIMATED_RATE_PER_KWH
-// We don't have a real electricity rate per provider stored anywhere yet
-// (Meralco and VECO actually charge different ₱/kWh rates). Until we add
-// a `rates` table or fetch a real published rate, we use this flat number
-// to estimate bills from appliance wattage/usage. Swap this out once real
-// rate data exists — search for ESTIMATED_RATE_PER_KWH to find every place
-// it's used.
+// FALLBACK_RATE_PER_KWH
+// Used only if a user's provider has no row in `electricity_rates` yet
+// (e.g. a brand-new/rare provider PRESYO hasn't published a rate for this
+// month). The real rate now comes from the database — see `providerRate`
+// state below, fetched from `electricity_rates`.
 // ============================================================
-const ESTIMATED_RATE_PER_KWH = 11.5 // ₱ per kWh
+const FALLBACK_RATE_PER_KWH = 11.5 // ₱ per kWh
 
 export default function Dashboard() {
   // Controls which time range button is highlighted in "Energy Usage Trend".
@@ -35,6 +32,9 @@ export default function Dashboard() {
   const [loadingAppliances, setLoadingAppliances] = useState(true)
   const [monthlyBills, setMonthlyBills] = useState([])       // rows from `monthly_bills` table
   const [loadingBills, setLoadingBills] = useState(true)
+  const [providerName, setProviderName] = useState('')       // from `providers` table
+  const [providerRate, setProviderRate] = useState(null)     // from `electricity_rates` table, null until loaded/found
+  const [loadingRate, setLoadingRate] = useState(true)
 
   // ============================================================
   // Runs once when the Dashboard mounts. Fetches everything the page
@@ -67,6 +67,51 @@ export default function Dashboard() {
         setProfile(profileData)
       }
       setLoadingProfile(false)
+
+      // --- 1b. Provider name + current rate, looked up from provider_id ---
+      // Runs only once we know provider_id from the profile above.
+      if (profileData?.provider_id) {
+        setLoadingRate(true)
+
+        const { data: providerData, error: providerError } = await supabase
+          .from('providers')
+          .select('name')
+          .eq('id', profileData.provider_id)
+          .single()
+
+        if (providerError) {
+          console.error('Failed to load provider:', providerError)
+        } else {
+          setProviderName(providerData?.name || 'Unknown Provider')
+        }
+
+        // Latest known rate for this provider — sorted by created_at so we
+        // always get the most recently imported month, regardless of how
+        // `month`/`year` are stored (month is a name like "June", not
+        // reliably sortable as a string).
+        const { data: rateData, error: rateError } = await supabase
+          .from('electricity_rates')
+          .select('residential_rate, month, year')
+          .eq('provider_id', profileData.provider_id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+          
+
+        if (rateError) {
+          console.error('Failed to load electricity rate:', rateError)
+        } else if (rateData?.residential_rate) {
+          setProviderRate(rateData.residential_rate)
+        }
+        // If no rate row exists yet, providerRate stays null and we fall
+        // back to FALLBACK_RATE_PER_KWH further down.
+        setLoadingRate(false)
+      } else {
+        setLoadingRate(false)
+      }
+
+      
 
       // --- 2. Appliances: every appliance this user has added (used for cost estimates) ---
       const { data: applianceData, error: applianceError } = await supabase
@@ -107,11 +152,14 @@ export default function Dashboard() {
   // data first (via Supabase Table Editor), then check the math here.
   // ============================================================
 
+  // Real rate for this provider if we found one, otherwise the flat fallback.
+  const effectiveRate = providerRate ?? FALLBACK_RATE_PER_KWH
+
   // Monthly ₱ cost for a single appliance:
   // watts * how many of that appliance * hours used per day * 30 days
   // ÷ 1000 (convert watt-hours to kWh) * price per kWh
   const applianceCost = (a) =>
-    (a.wattage * a.quantity * a.hours_per_day * 30) / 1000 * ESTIMATED_RATE_PER_KWH
+    (a.wattage * a.quantity * a.hours_per_day * 30) / 1000 * effectiveRate
 
   // Same formula but stops before multiplying by the ₱/kWh rate —
   // gives us kWh instead of pesos.
@@ -122,7 +170,7 @@ export default function Dashboard() {
   const hasTrendData = monthlyBills.length > 0
   // Single "is anything still loading" flag so the UI can show placeholders
   // instead of flashing 0/₱0 before real data arrives.
-  const loading = loadingProfile || loadingAppliances || loadingBills
+  const loading = loadingProfile || loadingAppliances || loadingBills || loadingRate
 
   // Sum up estimated cost/kWh across every appliance the user owns.
   const totalEstimatedCost = applianceList.reduce((sum, a) => sum + applianceCost(a), 0)
@@ -169,16 +217,11 @@ export default function Dashboard() {
     usage: b.actual_kwh,
   }))
 
-  // Friendly display name + provider name lookup.
-  // PROVIDERS is imported from Login.jsx — it should match the seeded
-  // `providers` table 1:1 (same ids). If a provider is added to the DB
-  // but not to that PROVIDERS array (or vice versa), this lookup can show
-  // "Unknown Provider" even though the profile data is correct.
+  // Friendly display name. Provider name + rate now come straight from the
+  // `providers` / `electricity_rates` tables (fetched above), not a
+  // hardcoded array, so this can never drift out of sync with the DB.
   const displayName = profile?.full_name || '....'
   const firstName = displayName.split(' ')[0] || '....'
-  const providerName = profile
-    ? PROVIDERS.find((p) => p.id === profile.provider_id)?.name || 'Unknown Provider'
-    : ''
 
   return (
     <div className="px-8 py-10 max-w-7xl mx-auto">

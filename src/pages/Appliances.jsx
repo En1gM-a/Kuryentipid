@@ -5,7 +5,6 @@ import {
   Zap, Leaf, TriangleAlert, Plug
 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
-import { PROVIDERS } from './Login'
 
 
 const APPLIANCES = []
@@ -15,6 +14,7 @@ export default function Appliances() {
   const [category, setCategory] = useState('All Categories')
   const [categories, setCategories] = useState(['All Categories'])
   const [profile, setProfile] = useState(null)
+  const [providerName, setProviderName] = useState('')
 
   useEffect(() => {
     async function loadAppliancePageData() {
@@ -37,6 +37,22 @@ export default function Appliances() {
         setProfile(profileData)
       }
 
+      // Provider name now comes from the `providers` table instead of the
+      // old hardcoded PROVIDERS array in Login.jsx (which no longer exists).
+      if (profileData?.provider_id) {
+        const { data: providerData, error: providerError } = await supabase
+          .from('providers')
+          .select('name')
+          .eq('id', profileData.provider_id)
+          .single()
+
+        if (providerError) {
+          console.error('Failed to load provider:', providerError)
+        } else {
+          setProviderName(providerData?.name || 'Unknown Provider')
+        }
+      }
+
       const { data: categoryData, error: categoryError } = await supabase
         .rpc('get_appliance_categories')
 
@@ -52,10 +68,6 @@ export default function Appliances() {
   }, [])
 
   const displayName = profile?.full_name || '....'
-
-  const providerName = profile
-    ? PROVIDERS.find((p) => p.id === profile.provider_id)?.name || 'Unknown Provider'
-    : ''
 
   const filtered = APPLIANCES.filter((a) => {
     const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase())
@@ -212,5 +224,3 @@ export default function Appliances() {
     </div>
   )
 }
-    
-  

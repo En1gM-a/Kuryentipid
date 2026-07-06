@@ -1,18 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Zap, Mail, Lock, Eye, EyeOff, ChevronDown, User } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
-
-export const PROVIDERS = [
-  { id: 1, name: 'Meralco' },
-  { id: 2, name: 'Visayan Electric (VECO)' },
-  { id: 3, name: 'Davao Light and Power Company' },
-  { id: 4, name: 'Cagayan Electric Power and Light Co. (CEPALCO)' },
-  { id: 5, name: 'Iloilo Electric Cooperative (ILECO)' },
-  { id: 6, name: 'Negros Occidental Electric Cooperative (NOCECO)' },
-  { id: 7, name: 'Zamboanga City Electric Cooperative (ZAMCELCO)' },
-  { id: 8, name: 'Other / Not Listed' },
-  { id: 9, name: 'Mactan Electric Company' },
-];
 
 // Must match the `regions` table exactly (id + name)
 export const REGIONS = [
@@ -50,16 +38,53 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Providers now come from the database instead of a hardcoded array
+  const [providers, setProviders] = useState([])
+  const [providersLoading, setProvidersLoading] = useState(false)
+  const [providersError, setProvidersError] = useState('')
+
   const [form, setForm] = useState({
     fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
     remember: false,
-    provider: PROVIDERS[0],
+    providerId: '',
     region: REGIONS[0],
     householdType: HOUSEHOLD_TYPES[0],
   })
+
+  // Fetch providers once we reach onboarding (or eagerly on mount — either works,
+  // this fetches on mount so the dropdown is ready by the time the user gets there)
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProviders() {
+      setProvidersLoading(true)
+      setProvidersError('')
+      const { data, error } = await supabase
+        .from('providers')
+        .select('id, name')
+        .order('name')
+
+      if (cancelled) return
+
+      if (error) {
+        setProvidersError('Could not load providers. Please try again.')
+        console.error('Failed to load providers:', error)
+      } else {
+        setProviders(data || [])
+        // Default the form to the first provider once loaded
+        if (data && data.length > 0) {
+          setForm((f) => (f.providerId ? f : { ...f, providerId: data[0].id }))
+        }
+      }
+      setProvidersLoading(false)
+    }
+
+    loadProviders()
+    return () => { cancelled = true }
+  }, [])
 
   const update = (field) => (e) => {
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value
@@ -106,17 +131,18 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    console.log('Current user:', user)
     if (user) {
+      // Only provider_id is stored — never the provider name — so rate lookups
+      // and any future provider renames stay consistent.
       const { data, error } = await supabase.from('profiles').upsert({
         id: user.id,
         full_name: form.fullName,
-        provider_id: form.provider,
+        provider_id: form.providerId,
         region_id: form.region,
         household_type: form.householdType,
         user_email: form.email,
       })
-      console.log('Upsert result:', data, error)
+      if (error) console.error('Upsert result error:', error)
     }
     setLoading(false)
     window.location.href = '/dashboard'
@@ -334,16 +360,24 @@ export default function Login() {
                   </label>
                   <div className="relative">
                     <select
-                      value={form.provider}
-                      onChange={update('provider')}
-                      className="w-full appearance-none px-4 pr-10 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 outline-none"
+                      value={form.providerId}
+                      onChange={update('providerId')}
+                      disabled={providersLoading || providers.length === 0}
+                      className="w-full appearance-none px-4 pr-10 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 outline-none disabled:opacity-60"
                     >
-                      {PROVIDERS.map((p) => (
+                      {providersLoading && <option value="">Loading providers…</option>}
+                      {!providersLoading && providers.length === 0 && (
+                        <option value="">No providers available</option>
+                      )}
+                      {providers.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                   </div>
+                  {providersError && (
+                    <p className="text-sm text-danger mt-1.5">{providersError}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -386,7 +420,7 @@ export default function Login() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !form.providerId}
                   className="w-full py-3 rounded-xl bg-primary text-white font-semibold shadow-sm hover:bg-blue-700 transition disabled:opacity-60"
                 >
                   {loading ? 'Saving…' : 'Complete Registration'}
