@@ -1,23 +1,70 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Search, ChevronDown, Plus, Pencil, Trash2,
   Snowflake, Refrigerator, Lightbulb, Tv, Fan,
   Zap, Leaf, TriangleAlert, Plug
 } from 'lucide-react'
+import { supabase } from '../lib/supabaseClient'
+import { PROVIDERS } from './Login'
+
 
 const APPLIANCES = []
-
-const CATEGORIES = ['All Categories', 'Cooling', 'Kitchen', 'Lighting', 'Entertainment']
 
 export default function Appliances() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All Categories')
+  const [categories, setCategories] = useState(['All Categories'])
+  const [profile, setProfile] = useState(null)
+
+  useEffect(() => {
+    async function loadAppliancePageData() {
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        window.location.href = '/login'
+        return
+      }
+
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name, provider_id')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError) {
+        console.error('Failed to load profile:', profileError)
+      } else {
+        setProfile(profileData)
+      }
+
+      const { data: categoryData, error: categoryError } = await supabase
+        .rpc('get_appliance_categories')
+
+      if (categoryError) {
+        console.error('Failed to load categories:', categoryError)
+        return
+      }
+
+      setCategories(['All Categories', ...categoryData.map((row) => row.value)])
+    }
+
+    loadAppliancePageData()
+  }, [])
+
+  const displayName = profile?.full_name || '....'
+
+  const providerName = profile
+    ? PROVIDERS.find((p) => p.id === profile.provider_id)?.name || 'Unknown Provider'
+    : ''
 
   const filtered = APPLIANCES.filter((a) => {
     const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase())
     const matchesCategory = category === 'All Categories' || a.category === category
+
     return matchesSearch && matchesCategory
   })
+
+
 
   return (
     <div className="relative px-8 py-10 max-w-7xl mx-auto">
@@ -36,8 +83,8 @@ export default function Appliances() {
             className="w-10 h-10 rounded-full object-cover"
           />
           <div>
-            <div className="font-semibold text-gray-900 text-sm">Juan Dela Cruz</div>
-            <div className="text-primary text-xs font-medium">Meralco User</div>
+            <div className="font-semibold text-gray-900 text-sm">{displayName}</div>
+            <div className="text-primary text-xs font-medium">{providerName}</div>
           </div>
         </div>
       </div>
@@ -61,7 +108,7 @@ export default function Appliances() {
             onChange={(e) => setCategory(e.target.value)}
             className="appearance-none pl-4 pr-9 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:ring-2 focus:ring-primary/30 outline-none cursor-pointer"
           >
-            {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
         </div>
@@ -165,3 +212,5 @@ export default function Appliances() {
     </div>
   )
 }
+    
+  
