@@ -5,6 +5,7 @@ import {
   Zap, Leaf, TriangleAlert, Plug
 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
+import AddApplianceModal from '../components/AddApplianceModal'
 
 
 const APPLIANCES = []
@@ -15,6 +16,7 @@ export default function Appliances() {
   const [categories, setCategories] = useState(['All Categories'])
   const [profile, setProfile] = useState(null)
   const [providerName, setProviderName] = useState('')
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     async function loadAppliancePageData() {
@@ -37,7 +39,7 @@ export default function Appliances() {
         setProfile(profileData)
       }
 
-      // Provider name now comes from the `providers` table instead of the
+      // Provider name now comes from the 'providers' table instead of the
       // old hardcoded PROVIDERS array in Login.jsx (which no longer exists).
       if (profileData?.provider_id) {
         const { data: providerData, error: providerError } = await supabase
@@ -127,7 +129,7 @@ export default function Appliances() {
 
         <div className="flex-1" />
 
-        <button className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
           <Plus size={18} />
           Add Appliance
         </button>
@@ -153,7 +155,7 @@ export default function Appliances() {
                 : 'Try a different search term or category.'}
             </p>
             {APPLIANCES.length === 0 && (
-              <button className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+              <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
                 <Plus size={18} />
                 Add Appliance
               </button>
@@ -178,7 +180,7 @@ export default function Appliances() {
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards */} {/* PLACEHOLDER STATS, FIX */} 
       <div className="grid grid-cols-3 gap-6 mt-10 pt-8 border-t border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
@@ -217,10 +219,18 @@ export default function Appliances() {
           </div>
         </div>
       </div>
-      {/*add button*/}
-      <button className="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:bg-blue-700 transition flex items-center justify-center">
+      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:bg-blue-700 transition flex items-center justify-center">
         <Plus size={24} />
       </button>
+      <AddApplianceModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        categories={categories.filter((c) => c !== 'All Categories')}
+        onApplianceAdded={(appliance) => {
+          // BACKEND once supabase insert is done, replace with refetch of appliances list instead of logging.
+          console.log('Appliance added:', appliance)
+        }}
+      />
     </div>
   )
 }

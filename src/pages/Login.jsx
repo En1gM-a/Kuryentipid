@@ -31,6 +31,37 @@ export const HOUSEHOLD_TYPES = [
   'Bungalow/House',
 ];
 
+// Providers we want pinned to the top of the dropdown, in this exact order.
+// Names must match the `name` column in the `providers` table (case-insensitive match below).
+// Add/remove/reorder freely — everything not listed here still falls back to A-Z.
+const PRIORITY_PROVIDERS = [
+  'Manila Electric Railroad and Light Company',
+  'Visayan Electric Company, Inc.',
+  'Davao Light and Power Company, Inc.',
+  'Cagayan Electric Power and Light Company, Inc',
+];
+
+// Puts PRIORITY_PROVIDERS first (in the order above), then the remaining
+// providers alphabetically. Assumes `list` is already sorted by name
+// (which it is, since the query below uses .order('name')).
+function sortProviders(list) {
+  const priority = []
+  const rest = []
+
+  list.forEach((p) => {
+    const idx = PRIORITY_PROVIDERS.findIndex(
+      (name) => name.toLowerCase() === p.name.toLowerCase()
+    )
+    if (idx !== -1) {
+      priority[idx] = p
+    } else {
+      rest.push(p)
+    }
+  })
+
+  return [...priority.filter(Boolean), ...rest]
+}
+
 export default function Login() {
   const [mode, setMode] = useState('signin') // 'signin' | 'register'
   const [step, setStep] = useState('credentials') // 'credentials' | 'onboarding'
@@ -73,10 +104,11 @@ export default function Login() {
         setProvidersError('Could not load providers. Please try again.')
         console.error('Failed to load providers:', error)
       } else {
-        setProviders(data || [])
+        const sorted = sortProviders(data || [])
+        setProviders(sorted)
         // Default the form to the first provider once loaded
-        if (data && data.length > 0) {
-          setForm((f) => (f.providerId ? f : { ...f, providerId: data[0].id }))
+        if (sorted.length > 0) {
+          setForm((f) => (f.providerId ? f : { ...f, providerId: sorted[0].id }))
         }
       }
       setProvidersLoading(false)
