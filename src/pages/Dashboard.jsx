@@ -28,12 +28,12 @@ export default function Dashboard() {
   // --- Data straight from Supabase, loaded in the useEffect below ---
   const [profile, setProfile] = useState(null)               // row from `profiles` table
   const [loadingProfile, setLoadingProfile] = useState(true)
-  const [applianceList, setApplianceList] = useState([])     // rows from `appliances` table
+  const [applianceList, setApplianceList] = useState([])     //appliance list
   const [loadingAppliances, setLoadingAppliances] = useState(true)
   const [monthlyBills, setMonthlyBills] = useState([])       // rows from `monthly_bills` table
-  const [loadingBills, setLoadingBills] = useState(true)
-  const [providerName, setProviderName] = useState('')       // from `providers` table
-  const [providerRate, setProviderRate] = useState(null)     // from `electricity_rates` table, null until loaded/found
+  const [loadingBills, setLoadingBills] = useState(true)     // Bills
+  const [providerName, setProviderName] = useState('')       // name of the provider
+  const [providerRate, setProviderRate] = useState(null)     // provider's current rate (₱/kWh) from `electricity_rates` table
   const [loadingRate, setLoadingRate] = useState(true)
 
   // ============================================================
@@ -194,6 +194,8 @@ export default function Dashboard() {
       : '0'
 
   const applianceCount = applianceList.length
+
+  
 
   // ⚠️ PLACEHOLDER LOGIC — not a real savings calculation yet.
   // Currently just assumes "12% of your total estimated cost" as a generic

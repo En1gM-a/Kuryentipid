@@ -5,10 +5,6 @@ import {
   Zap, Leaf, TriangleAlert, Plug
 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
-import AddApplianceModal from '../components/AddApplianceModal'
-
-
-const APPLIANCES = []
 
 export default function Appliances() {
   const [search, setSearch] = useState('')
@@ -16,10 +12,22 @@ export default function Appliances() {
   const [categories, setCategories] = useState(['All Categories'])
   const [profile, setProfile] = useState(null)
   const [providerName, setProviderName] = useState('')
-  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  // NEW: this was missing — `setAppliances` was being called with nowhere to
+  // put the data. `APPLIANCES` was a hardcoded empty const, not state, so
+  // nothing on screen could ever update. This replaces that const.
+  const [appliances, setAppliances] = useState([])
 
   useEffect(() => {
+    // Runs once on mount to populate the whole page: current user, their
+    // appliance rows, their profile, their provider's name, and the list
+    // of appliance categories for the filter dropdown.
     async function loadAppliancePageData() {
+
+      // --- AUTH CHECK ---
+      // Ask Supabase who is currently logged in (reads the session/JWT
+      // stored client-side). If nobody is logged in, bounce to /login
+      // and stop the rest of the function from running.
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
@@ -27,6 +35,27 @@ export default function Appliances() {
         return
       }
 
+      // --- FETCH APPLIANCE CATALOG ---
+      // `appliances_choices` is a shared reference table (brand, model, typical
+      // wattage, energy rating, etc.) that all users pick from when adding an
+      // appliance to their own list — intentionally unfiltered, not per-user.
+      const { data: applianceData, error: applianceError } = await supabase
+        .from('appliances_choices')
+        .select('*')
+        // .eq('user_id', user.id)  // only if/once you add a user_id column
+
+      if (applianceError) {
+        console.error('Failed to load appliance data:', applianceError)
+      } else {
+        // Store the appliance rows in their own state (separate from
+        // `profile`, which was the original bug — they were both being
+        // shoved into the same setProfile call and overwriting each other).
+        setAppliances(applianceData)
+      }
+
+      // --- FETCH USER PROFILE ---
+      // Grabs this user's display name and which provider they belong to.
+      // .single() expects exactly one row back (throws/errors if 0 or 2+).
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, provider_id')
@@ -39,8 +68,11 @@ export default function Appliances() {
         setProfile(profileData)
       }
 
-      // Provider name now comes from the 'providers' table instead of the
+      // --- FETCH PROVIDER NAME ---
+      // Provider name now comes from the `providers` table instead of the
       // old hardcoded PROVIDERS array in Login.jsx (which no longer exists).
+      // Only runs if the profile fetch above succeeded and actually has a
+      // provider_id to look up.
       if (profileData?.provider_id) {
         const { data: providerData, error: providerError } = await supabase
           .from('providers')
@@ -55,6 +87,11 @@ export default function Appliances() {
         }
       }
 
+      // --- FETCH CATEGORY LIST ---
+      // Calls a Postgres function (RPC) `get_appliance_categories` that
+      // returns the distinct list of appliance categories, used to
+      // populate the filter dropdown. "All Categories" is prepended so
+      // the default option always shows everything.
       const { data: categoryData, error: categoryError } = await supabase
         .rpc('get_appliance_categories')
 
@@ -71,14 +108,16 @@ export default function Appliances() {
 
   const displayName = profile?.full_name || '....'
 
-  const filtered = APPLIANCES.filter((a) => {
-    const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase())
+  // --- CLIENT-SIDE FILTERING ---
+  // Filters the appliances already loaded into state by the search box
+  // text and the selected category dropdown. Purely client-side, no
+  // extra network calls.
+  const filtered = appliances.filter((a) => {
+    const matchesSearch = a.model_name?.toLowerCase().includes(search.toLowerCase())
     const matchesCategory = category === 'All Categories' || a.category === category
 
     return matchesSearch && matchesCategory
   })
-
-
 
   return (
     <div className="relative px-8 py-10 max-w-7xl mx-auto">
@@ -129,7 +168,7 @@ export default function Appliances() {
 
         <div className="flex-1" />
 
-        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+        <button className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
           <Plus size={18} />
           Add Appliance
         </button>
@@ -147,15 +186,15 @@ export default function Appliances() {
               <Plug size={24} className="text-gray-300" />
             </div>
             <p className="font-semibold text-gray-900 mb-1">
-              {APPLIANCES.length === 0 ? 'No appliances yet' : 'No matching appliances'}
+              {appliances.length === 0 ? 'No appliances yet' : 'No matching appliances'}
             </p>
             <p className="text-sm text-gray-500 max-w-xs mb-5">
-              {APPLIANCES.length === 0
+              {appliances.length === 0
                 ? 'Add your first appliance to start tracking your electricity usage.'
                 : 'Try a different search term or category.'}
             </p>
-            {APPLIANCES.length === 0 && (
-              <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
+            {appliances.length === 0 && (
+              <button className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition">
                 <Plus size={18} />
                 Add Appliance
               </button>
@@ -168,7 +207,7 @@ export default function Appliances() {
       <div className="flex items-center justify-between mt-5">
         <p className="text-sm text-gray-500">
           Showing <span className="font-semibold text-gray-900">{filtered.length}</span> of{' '}
-          <span className="font-semibold text-gray-900">{APPLIANCES.length}</span> appliances
+          <span className="font-semibold text-gray-900">{appliances.length}</span> appliances
         </p>
         <div className="flex gap-2">
           <button className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed">
@@ -180,7 +219,7 @@ export default function Appliances() {
         </div>
       </div>
 
-      {/* Summary cards */} {/* PLACEHOLDER STATS, FIX */} 
+      {/* Summary cards */}
       <div className="grid grid-cols-3 gap-6 mt-10 pt-8 border-t border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
@@ -219,18 +258,10 @@ export default function Appliances() {
           </div>
         </div>
       </div>
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:bg-blue-700 transition flex items-center justify-center">
+      {/*add button*/}
+      <button className="fixed bottom-8 right-8 w-14 h-14 rounded-full bg-primary text-white shadow-lg hover:bg-blue-700 transition flex items-center justify-center">
         <Plus size={24} />
       </button>
-      <AddApplianceModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        categories={categories.filter((c) => c !== 'All Categories')}
-        onApplianceAdded={(appliance) => {
-          // BACKEND once supabase insert is done, replace with refetch of appliances list instead of logging.
-          console.log('Appliance added:', appliance)
-        }}
-      />
     </div>
   )
 }
