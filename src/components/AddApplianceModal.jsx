@@ -2,15 +2,33 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 
+const CUSTOM_OPTION = '__custom__'
+
 // `categories` should be the same list already fetched in Appliances.jsx
 // via supabase.rpc('get_appliance_categories') — pass it in as a prop so
 // this dropdown always matches the filter dropdown on the main page.
-export default function AddApplianceModal({ isOpen, onClose, categories, onApplianceAdded }) {
+//
+// `applianceChoices` is the shared `appliance_choices` catalog, also
+// already fetched on Appliances.jsx. Its columns are:
+// id, category, brand, model_name, typical_wattage, typical_hours_per_day,
+// energy_rating, notes.
+// Picking one here autofills category/brand/model/wattage/hours so the
+// user doesn't have to look up specs themselves — but they can still
+// edit any field or go fully manual.
+export default function AddApplianceModal({
+  isOpen,
+  onClose,
+  categories,
+  applianceChoices = [],
+  onApplianceAdded,
+}) {
+  const [selectedChoiceId, setSelectedChoiceId] = useState(CUSTOM_OPTION)
   const [form, setForm] = useState({
     category: '',
-    name: '',
-    watts: '',
-    quantity: 1,
+    brand: '',
+    modelName: '',
+    wattage: '',
+    quantity: '1',
     hoursPerDay: '',
   })
   const [saving, setSaving] = useState(false)
@@ -22,42 +40,85 @@ export default function AddApplianceModal({ isOpen, onClose, categories, onAppli
     setForm((f) => ({ ...f, [field]: e.target.value }))
   }
 
+  const selectedChoice =
+    selectedChoiceId !== CUSTOM_OPTION
+      ? applianceChoices.find((c) => String(c.id) === selectedChoiceId)
+      : null
+
+  // When the user picks a known appliance from the catalog, autofill the
+  // fields we can. They can still edit them afterward — this is a
+  // shortcut, not a lock.
+  function handleChoiceSelect(e) {
+    const id = e.target.value
+    setSelectedChoiceId(id)
+
+    if (id === CUSTOM_OPTION) return
+
+    const choice = applianceChoices.find((c) => String(c.id) === id)
+    if (!choice) return
+
+    setForm((f) => ({
+      ...f,
+      category: choice.category ?? f.category,
+      brand: choice.brand ?? f.brand,
+      modelName: choice.model_name ?? f.modelName,
+      wattage: choice.typical_wattage != null ? String(choice.typical_wattage) : f.wattage,
+      hoursPerDay:
+        choice.typical_hours_per_day != null
+          ? String(choice.typical_hours_per_day)
+          : f.hoursPerDay,
+    }))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setSaving(true)
 
-    // BACKEND
-    // replace with real insert into the `appliances` table like:
-    //
-    //   const { data: { user } } = await supabase.auth.getUser()
-    //   const { error } = await supabase.from('appliances').insert({
-    //     user_id: user.id,
-    //     category: form.category,
-    //     name: form.name,
-    //     watts: Number(form.watts),
-    //     quantity: Number(form.quantity),
-    //     hours_per_day: Number(form.hoursPerDay),
-    //   })
-    //
-    // - `category` is a plain text value right now (from the same
-    //   get_appliance_categories() RPC used on the main Appliances page).
-    //   if categories become their own table with IDs later, swap this
-    //   for a category_id foreign key instead, same as provider_id/region_id
-    //   in profiles.
-    // - this modal is manual-entry rn. should add
-    //   a searchable "pick from known appliances" flow like meralco's
-    //   calculator once we have a real appliances reference table
-    //   with pre-filled wattages
-    // - after a successful insert, call onApplianceAdded() so the parent
-    //   page can refetch the list instead of relying on a manual refresh.
+    // user_id is a real FK on `appliances`, so pull the current user
+    // from the session rather than the form.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
 
-    console.log('New appliance (placeholder, not yet saved to Supabase):', form)
+    if (userError || !user) {
+      setError('You need to be signed in to add an appliance.')
+      setSaving(false)
+      return
+    }
+
+    const name = `${form.brand} ${form.modelName}`.trim()
+
+    const { error: insertError } = await supabase.from('appliances').insert({
+      user_id: user.id,
+      name,
+      category: form.category,
+      wattage: Number(form.wattage),
+      quantity: Number(form.quantity),
+      hours_per_day: Number(form.hoursPerDay),
+      is_active: true,
+    })
 
     setSaving(false)
+
+    if (insertError) {
+      console.error('Failed to add appliance:', insertError)
+      setError('Something went wrong saving this appliance. Please try again.')
+      return
+    }
+
     onApplianceAdded?.(form)
     onClose()
-    setForm({ category: '', name: '', watts: '', quantity: 1, hoursPerDay: '' })
+    setSelectedChoiceId(CUSTOM_OPTION)
+    setForm({
+      category: '',
+      brand: '',
+      modelName: '',
+      wattage: '',
+      quantity: '1',
+      hoursPerDay: '',
+    })
   }
 
   return (
@@ -80,6 +141,36 @@ export default function AddApplianceModal({ isOpen, onClose, categories, onAppli
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Catalog picker — optional shortcut that autofills fields below */}
+          {applianceChoices.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Choose from catalog
+              </label>
+              <select
+                value={selectedChoiceId}
+                onChange={handleChoiceSelect}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
+              >
+                <option value={CUSTOM_OPTION}>Custom / not listed</option>
+                {applianceChoices.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.brand} {c.model_name}
+                    {c.typical_wattage ? ` — ${c.typical_wattage}W` : ''}
+                  </option>
+                ))}
+              </select>
+
+              {selectedChoice && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  {selectedChoice.energy_rating && `${selectedChoice.energy_rating} rating. `}
+                  Fields below are filled in — you can still edit them.
+                  {selectedChoice.notes && ` Note: ${selectedChoice.notes}`}
+                </p>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Category
@@ -99,19 +190,33 @@ export default function AddApplianceModal({ isOpen, onClose, categories, onAppli
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Appliance Name
+              Brand
             </label>
             <input
               type="text"
               required
-              placeholder="e.g. Air Conditioner"
-              value={form.name}
-              onChange={update('name')}
+              placeholder="e.g. Samsung"
+              value={form.brand}
+              onChange={update('brand')}
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Model Name
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. RT38 Inverter"
+              value={form.modelName}
+              onChange={update('modelName')}
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Wattage (W)
@@ -121,8 +226,8 @@ export default function AddApplianceModal({ isOpen, onClose, categories, onAppli
                 required
                 min="1"
                 placeholder="1200"
-                value={form.watts}
-                onChange={update('watts')}
+                value={form.wattage}
+                onChange={update('wattage')}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
               />
             </div>
@@ -134,28 +239,29 @@ export default function AddApplianceModal({ isOpen, onClose, categories, onAppli
                 type="number"
                 required
                 min="1"
+                step="1"
+                placeholder="1"
                 value={form.quantity}
                 onChange={update('quantity')}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Usage (hours/day)
-            </label>
-            <input
-              type="number"
-              required
-              min="0"
-              max="24"
-              step="0.5"
-              placeholder="8"
-              value={form.hoursPerDay}
-              onChange={update('hoursPerDay')}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Hours/Day
+              </label>
+              <input
+                type="number"
+                required
+                min="0"
+                max="24"
+                step="0.5"
+                placeholder="8"
+                value={form.hoursPerDay}
+                onChange={update('hoursPerDay')}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
+              />
+            </div>
           </div>
 
           {error && (
