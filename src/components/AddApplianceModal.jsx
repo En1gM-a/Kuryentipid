@@ -145,14 +145,14 @@ export default function AddApplianceModal({
           {applianceChoices.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Choose from catalog
+                Choose from Catalog
               </label>
               <select
                 value={selectedChoiceId}
                 onChange={handleChoiceSelect}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
               >
-                <option value={CUSTOM_OPTION}>Custom / not listed</option>
+                <option value={CUSTOM_OPTION}>Custom / Unlisted</option>
                 {applianceChoices.map((c) => (
                   <option key={c.id} value={String(c.id)}>
                     {c.brand} {c.model_name}

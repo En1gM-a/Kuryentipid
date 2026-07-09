@@ -1,0 +1,295 @@
+import { useState, useEffect, useMemo } from 'react'
+import { SlidersHorizontal, RotateCcw, Check } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell,
+} from 'recharts'
+import { supabase } from '../lib/supabaseClient'
+import { getCategoryStyle } from '../lib/applianceStyles'
+import { calculateMonthlyCost } from '../lib/calculations'
+import { useElectricityRate } from '../hooks/useElectricityRate'
+
+export default function BillOptimizer() {
+  const [profile, setProfile] = useState(null)
+  const [providerName, setProviderName] = useState('')
+  const [appliances, setAppliances] = useState([])
+  const [simulatedHours, setSimulatedHours] = useState({}) // { [applianceId]: hours }
+  const [loading, setLoading] = useState(true)
+  const { rate: ratePerKwh, loading: rateLoading } = useElectricityRate(profile?.provider_id)
+
+  useEffect(() => {
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        window.location.href = '/login'
+        return
+      }
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('full_name, provider_id')
+        .eq('id', user.id)
+        .single()
+      setProfile(profileData)
+
+      if (profileData?.provider_id) {
+        const { data: providerData } = await supabase
+          .from('providers')
+          .select('name')
+          .eq('id', profileData.provider_id)
+          .single()
+        setProviderName(providerData?.name || 'Unknown Provider')
+      }
+
+      const { data: applianceData, error } = await supabase
+        .from('appliances')
+        .select('*')
+        .eq('user_id', user.id)
+
+      if (error) {
+        console.error('Failed to load appliances:', error)
+      } else {
+        setAppliances(applianceData || [])
+        // Seed the slider state from each appliance's saved hours/day.
+        const initialHours = {}
+        ;(applianceData || []).forEach((a) => {
+          initialHours[a.id] = Number(a.hours_per_day ?? 0)
+        })
+        setSimulatedHours(initialHours)
+      }
+
+      setLoading(false)
+    }
+
+    load()
+  }, [])
+
+  const displayName = profile?.full_name || '....'
+
+    const currentBill = useMemo(
+    () => ratePerKwh
+        ? appliances.reduce((sum, a) => sum + calculateMonthlyCost(a, ratePerKwh), 0)
+        : 0,
+    [appliances, ratePerKwh]
+    )
+
+    const projectedBill = useMemo(
+    () => ratePerKwh
+        ? appliances.reduce(
+            (sum, a) => sum + calculateMonthlyCost(a, ratePerKwh, simulatedHours[a.id]),
+            0
+        )
+        : 0,
+    [appliances, simulatedHours, ratePerKwh]
+    )
+
+  const savings = currentBill - projectedBill
+  const percentReduction = currentBill > 0 ? (savings / currentBill) * 100 : 0
+
+  function handleSliderChange(applianceId, value) {
+    setSimulatedHours((prev) => ({ ...prev, [applianceId]: Number(value) }))
+  }
+
+  function handleReset() {
+    const resetHours = {}
+    appliances.forEach((a) => {
+      resetHours[a.id] = Number(a.hours_per_day ?? 0)
+    })
+    setSimulatedHours(resetHours)
+  }
+
+  // BACKEND TODO: currently does nothing but log.
+  // Decide whether saving the configuration should mean:
+  //   a) overwriting each appliance's hours_per_day in `appliances` with
+  //      the simulated values, or
+  //   b) inserting a new row into a separate `scenarios`/`simulations`
+  //      table so users can keep multiple saved what-ifs (matches the
+  //      "Custom Scenario #1" label in the design) without touching
+  //      their real appliance data.
+  function handleSaveConfiguration() {
+    console.log('Save configuration (not yet implemented):', simulatedHours)
+  }
+
+  const chartData = [
+    { label: 'Current', value: currentBill },
+    { label: 'Projected', value: projectedBill },
+  ]
+
+  return (
+    <div className="px-8 py-10 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900">Bill Optimizer</h1>
+          <p className="text-gray-500 mt-1">
+            Simulate changes to your appliance usage and see real-time impact on your bill.
+          </p>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <div className="text-xs font-semibold text-gray-400 tracking-wide">ACTIVE SIMULATION</div>
+            <div className="text-primary font-bold text-sm">Custom Scenario #1</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <img
+              src="https://i.pravatar.cc/40?img=12"
+              alt="User avatar"
+              className="w-10 h-10 rounded-full object-cover"
+            />
+            <div>
+              <div className="font-semibold text-gray-900 text-sm">{displayName}</div>
+              <div className="text-primary text-xs font-medium">{providerName}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {loading || rateLoading ? (
+        <p className="text-gray-400 text-sm">Loading your appliances…</p>
+        ) : appliances.length === 0 ? (
+        <div className="border border-gray-100 rounded-card p-16 text-center shadow-sm">
+            <p className="font-semibold text-gray-900 mb-1">No appliances to optimize yet</p>
+            <p className="text-sm text-gray-500">
+            Add appliances first from the Appliances page, then come back here to simulate changes.
+            </p>
+        </div>
+        ) : !ratePerKwh ? (
+        <div className="border border-gray-100 rounded-card p-16 text-center shadow-sm">
+            <p className="font-semibold text-gray-900 mb-1">No electricity rate found</p>
+            <p className="text-sm text-gray-500">
+            We couldn't find a rate for your selected provider. Please check your Profile settings.
+            </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-6">
+          {/* Adjust Daily Usage */}
+          <div className="col-span-2 border border-gray-100 rounded-card p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={18} className="text-gray-400" />
+                <h2 className="text-lg font-bold text-gray-900">Adjust Daily Usage</h2>
+              </div>
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+              >
+                <RotateCcw size={14} />
+                Reset to Default
+              </button>
+            </div>
+
+            <div className="flex flex-col divide-y divide-gray-100">
+              {appliances.map((a) => {
+                const style = getCategoryStyle(a.category)
+                const Icon = style.icon
+                const hours = simulatedHours[a.id] ?? 0
+
+                return (
+                  <div key={a.id} className="py-5 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${style.badgeBg}`}>
+                          <Icon size={18} className={style.iconColor} />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {a.name || 'Unnamed Appliance'}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {a.category} • Qty {a.quantity ?? 1}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-2xl font-extrabold text-gray-900">
+                          {hours.toFixed(1)}
+                        </span>
+                        <span className="text-sm text-gray-400 ml-1">hrs/day</span>
+                      </div>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="0"
+                      max="24"
+                      step="0.5"
+                      value={hours}
+                      onChange={(e) => handleSliderChange(a.id, e.target.value)}
+                      className="w-full accent-primary cursor-pointer"
+                    />
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>0h</span>
+                      <span>12h</span>
+                      <span>24h</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Results sidebar */}
+          <div className="flex flex-col gap-6">
+            <div className="bg-gray-900 rounded-card p-6 text-white">
+              <p className="text-xs font-semibold text-gray-400 tracking-wide mb-4">
+                OPTIMIZATION RESULTS
+              </p>
+
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-300">Current Bill</span>
+                <span className="font-bold">
+                  ₱{currentBill.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-700">
+                <span className="text-sm text-gray-300">Projected Bill</span>
+                <span className="font-bold text-primary">
+                  ₱{projectedBill.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <p className="text-xs font-semibold text-gray-400 tracking-wide mb-1">
+                ESTIMATED MONTHLY SAVINGS
+              </p>
+              <p className={`text-3xl font-extrabold mb-2 ${savings >= 0 ? 'text-success' : 'text-danger'}`}>
+                ₱{Math.abs(savings).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                <span className="text-sm font-medium text-gray-400"> / mo</span>
+              </p>
+              <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-6 ${
+                savings >= 0 ? 'text-success bg-green-500/10' : 'text-danger bg-red-500/10'
+              }`}>
+                {percentReduction >= 0 ? '' : '+'}{Math.abs(percentReduction).toFixed(1)}%{' '}
+                {savings >= 0 ? 'Cost Reduction' : 'Cost Increase'}
+              </span>
+
+              <button
+                onClick={handleSaveConfiguration}
+                className="w-full flex items-center justify-center gap-2 bg-primary text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition"
+              >
+                Save Configuration
+                <Check size={18} />
+              </button>
+            </div>
+
+            <div className="border border-gray-100 rounded-card p-6 shadow-sm">
+              <h3 className="font-bold text-gray-900 mb-4">Bill Impact Breakdown</h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                    <Cell fill="#E5E7EB" />
+                    <Cell fill="#2563EB" />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-xs text-gray-400 mt-2">
+                Based on current kWh rates and simulated usage patterns.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

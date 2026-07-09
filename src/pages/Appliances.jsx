@@ -5,15 +5,19 @@ import {
   Zap, Leaf, TriangleAlert, Plug
 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
-import AddApplianceModal from '../components/AddApplianceModal' // adjust path as needed
+import AddApplianceModal from '../components/AddApplianceModal'
+import { getCategoryStyle } from '../lib/applianceStyles'
+import { useElectricityRate } from '../hooks/useElectricityRate'
+import { calculateMonthlyCost } from '../lib/calculations'
 
 export default function Appliances() {
   const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('All Categories')
-  const [categories, setCategories] = useState(['All Categories'])
+  const [category, setCategory] = useState('ALL CATEGORIES')
+  const [categories, setCategories] = useState(['ALL CATEGORIES'])
   const [profile, setProfile] = useState(null)
   const [providerName, setProviderName] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const { rate: ratePerKwh, loading: rateLoading } = useElectricityRate(profile?.provider_id)
 
   // NOTE: despite the name, this state currently holds rows from
   // `appliance_choices` (the shared catalog), NOT the user's own
@@ -110,7 +114,7 @@ export default function Appliances() {
     // Calls a Postgres function (`get_appliance_categories`) rather than
     // querying a table directly — likely because categories come from an
     // enum/lookup table or need de-duplication server-side. Prepending
-    // 'All Categories' gives the filter dropdown its default "show
+    // 'ALL CATEGORIES' gives the filter dropdown its default "show
     // everything" option. This list is also passed down as a prop to
     // AddApplianceModal so both dropdowns always stay in sync.
     const { data: categoryData, error: categoryError } = await supabase
@@ -121,7 +125,7 @@ export default function Appliances() {
       return
     }
 
-    setCategories(['All Categories', ...categoryData.map((row) => row.value)])
+    setCategories(['ALL CATEGORIES', ...categoryData.map((row) => row.value)])
   }
 
   // Run once on mount. Empty dependency array means this won't re-fire on
@@ -135,10 +139,13 @@ export default function Appliances() {
   const totalWattage = userAppliances.reduce((total, appliance) => {
   return total + Number(appliance.wattage || 0)
   }, 0)
+  const totalMonthlyCost = ratePerKwh
+  ? userAppliances.reduce((sum, a) => sum + calculateMonthlyCost(a, ratePerKwh), 0)
+  : null
 
   const filteredUserAppliances = userAppliances.filter((a) => {
   const matchesSearch = (a.name || a.model_name || '').toLowerCase().includes(search.toLowerCase())
-  const matchesCategory = category === 'All Categories' || a.category === category
+  const matchesCategory = category === 'ALL CATEGORIES' || a.category === category
 
   return matchesSearch && matchesCategory
   })
@@ -161,7 +168,7 @@ export default function Appliances() {
   // being practical.
   const filtered = appliances.filter((a) => {
     const matchesSearch = a.model_name?.toLowerCase().includes(search.toLowerCase())
-    const matchesCategory = category === 'All Categories' || a.category === category
+    const matchesCategory = category === 'ALL CATEGORIES' || a.category === category
 
     return matchesSearch && matchesCategory
   })
@@ -245,6 +252,7 @@ export default function Appliances() {
           <th className="px-6 py-4 text-left font-semibold text-gray-500">Wattage</th>
           <th className="px-6 py-4 text-left font-semibold text-gray-500">Hours / Day</th>
           <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Use</th>
+          <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Cost</th>
           <th className="px-6 py-4 text-right font-semibold text-gray-500">Actions</th>
         </tr>
       </thead>
@@ -261,13 +269,19 @@ export default function Appliances() {
                 <div className="font-semibold text-gray-900">
                   {appliance.name || appliance.model_name || 'Unnamed Appliance'}
                 </div>
-                <div className="text-xs text-gray-400">
-                  {appliance.brand || 'No brand'}
-                </div>
               </td>
 
-              <td className="px-6 py-4 text-gray-600">
-                {appliance.category || 'Uncategorized'}
+              <td className="px-6 py-4">
+                {(() => {
+                  const style = getCategoryStyle(appliance.category)
+                  const Icon = style.icon
+                  return (
+                    <div className="flex items-center gap-2 text-gray-700">
+                      <Icon size={16} className={style.iconColor} />
+                      <span className="font-semibold">{appliance.category || 'Uncategorized'}</span>
+                    </div>
+                  )
+                })()}
               </td>
 
               <td className="px-6 py-4 font-semibold text-gray-900">
@@ -280,6 +294,12 @@ export default function Appliances() {
 
               <td className="px-6 py-4 font-semibold text-gray-900">
                 {monthlyKwh} kWh
+              </td>
+
+              <td className="px-6 py-4 font-semibold text-gray-900">
+                {ratePerKwh
+                  ? `₱${calculateMonthlyCost(appliance, ratePerKwh).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                  : rateLoading ? '…' : 'N/A'}
               </td>
 
               <td className="px-6 py-4">
@@ -335,8 +355,8 @@ export default function Appliances() {
           the catalog grows large enough to need real pagination. */}
       <div className="flex items-center justify-between mt-5">
         <p className="text-sm text-gray-500">
-          Showing <span className="font-semibold text-gray-900">{filtered.length}</span> of{' '}
-          <span className="font-semibold text-gray-900">{appliances.length}</span> appliances
+          Showing <span className="font-semibold text-gray-900">{filteredUserAppliances.length}</span> of{' '}
+          <span className="font-semibold text-gray-900">{userAppliances.length}</span> appliances
         </p>
         <div className="flex gap-2">
           <button className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed">
@@ -349,14 +369,8 @@ export default function Appliances() {
       </div>
 
       {/* Summary cards */}
-      {/* ⚠️ ALL THREE VALUES BELOW ARE HARDCODED — none of them are
-          computed from `appliances`, `filtered`, or any Supabase data.
-          "1,539 TOTAL WATTS", "Good / +4% vs Avg", and the aircon tip are
-          static placeholder text. Real versions would need to sum
-          `typical_wattage` (or the user's own `appliances.wattage`,
-          depending on which table this page is meant to summarize — see
-          note below the code) and compute an actual efficiency comparison
-          and usage-vs-target check server-side or client-side. */}
+      {/* ⚠️ ENERGY EFFICIENCY IS A HARDCODED PLACEHOLDER — compute an actual 
+          efficiency comparison and usage-vs-target check server-side or client-side. */}
       <div className="grid grid-cols-3 gap-6 mt-10 pt-8 border-t border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
@@ -390,8 +404,12 @@ export default function Appliances() {
             <TriangleAlert size={18} className="text-warning" />
           </div>
           <div>
-            <div className="text-xs text-gray-500 font-medium tracking-wide">OPTIMIZATION TIP</div>
-            <div className="text-sm font-semibold text-gray-900">Aircon usage is 2h above target</div>
+            <div className="text-xs text-gray-500 font-medium tracking-wide">EST. MONTHLY COST</div>
+            <div className="text-lg font-extrabold text-gray-900">
+              {totalMonthlyCost !== null
+                ? `₱${totalMonthlyCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                : rateLoading ? 'Loading…' : 'N/A'}
+            </div>
           </div>
         </div>
       </div>
@@ -406,7 +424,7 @@ export default function Appliances() {
         <Plus size={24} />
       </button>
 
-      {/* `categories` filtered to drop 'All Categories' since that's a
+      {/* `categories` filtered to drop 'ALL CATEGORIES' since that's a
           page-level filter option, not a real category the DB stores —
           shouldn't be selectable as an appliance's category in the form.
           `applianceChoices={appliances}` passes the (confusingly-named)
@@ -415,7 +433,7 @@ export default function Appliances() {
       <AddApplianceModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        categories={categories.filter((c) => c !== 'All Categories')}
+        categories={categories.filter((c) => c !== 'ALL CATEGORIES')}
         applianceChoices={appliances}
         onApplianceAdded={handleApplianceAdded}
       />
