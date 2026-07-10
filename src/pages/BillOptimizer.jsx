@@ -4,26 +4,35 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell,
 } from 'recharts'
 import { supabase } from '../lib/supabaseClient'
-import { getCategoryStyle } from '../lib/applianceStyles'
-import { calculateMonthlyCost } from '../lib/calculations'
-import { useElectricityRate } from '../hooks/useElectricityRate'
+import { getCategoryStyle } from '../lib/applianceStyles' // maps category -> icon + colors for UI badges
+import { calculateMonthlyCost } from '../lib/calculations' // shared cost formula, reused for both current + projected bill
+import { useElectricityRate } from '../hooks/useElectricityRate' // custom hook, fetches ₱/kWh rate for a given provider_id
 
 export default function BillOptimizer() {
+  // Logged-in user's profile row (need provider_id to know which rate to use)
   const [profile, setProfile] = useState(null)
+  // Human-readable provider name (e.g. "Meralco"), fetched separately since profiles only stores provider_id
   const [providerName, setProviderName] = useState('')
+  // All appliances belonging to this user, pulled straight from the appliances table
   const [appliances, setAppliances] = useState([])
+  // Local-only "what if" hours per appliance, keyed by appliance id — NOT saved to DB until Save Configuration is implemented
   const [simulatedHours, setSimulatedHours] = useState({}) // { [applianceId]: hours }
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [loading, setLoading] = useState(true)
+  // Custom hook: looks up the ₱/kWh rate once we know the user's provider_id
   const { rate: ratePerKwh, loading: rateLoading } = useElectricityRate(profile?.provider_id)
 
   useEffect(() => {
     async function load() {
+      // Step 1: confirm someone is actually logged in before fetching anything
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         window.location.href = '/login'
         return
       }
 
+      // Step 2: get this user's profile (need provider_id + full_name)
       const { data: profileData } = await supabase
         .from('profiles')
         .select('full_name, provider_id')
@@ -31,6 +40,8 @@ export default function BillOptimizer() {
         .single()
       setProfile(profileData)
 
+      // Step 3: convert provider_id -> readable provider name via a second query
+      // (this is a separate lookup because provider names live in their own table, not hardcoded here)
       if (profileData?.provider_id) {
         const { data: providerData } = await supabase
           .from('providers')
@@ -40,6 +51,7 @@ export default function BillOptimizer() {
         setProviderName(providerData?.name || 'Unknown Provider')
       }
 
+      // Step 4: fetch every appliance owned by this user (RLS ensures only their own rows come back)
       const { data: applianceData, error } = await supabase
         .from('appliances')
         .select('*')
@@ -61,18 +73,21 @@ export default function BillOptimizer() {
     }
 
     load()
-  }, [])
+  }, []) // empty array = run once on mount only
 
+  // Fallback text while profile is still loading or missing
   const displayName = profile?.full_name || '....'
 
-    const currentBill = useMemo(
+  // Recalculates only when appliances or ratePerKwh change — avoids recomputing on every render
+  const currentBill = useMemo(
     () => ratePerKwh
         ? appliances.reduce((sum, a) => sum + calculateMonthlyCost(a, ratePerKwh), 0)
         : 0,
     [appliances, ratePerKwh]
     )
 
-    const projectedBill = useMemo(
+  // Same as currentBill, but uses the user's simulated (slider-adjusted) hours instead of the saved hours_per_day
+  const projectedBill = useMemo(
     () => ratePerKwh
         ? appliances.reduce(
             (sum, a) => sum + calculateMonthlyCost(a, ratePerKwh, simulatedHours[a.id]),
@@ -82,13 +97,17 @@ export default function BillOptimizer() {
     [appliances, simulatedHours, ratePerKwh]
     )
 
+  // Positive = saving money, negative = simulated usage actually costs more than current
   const savings = currentBill - projectedBill
+  // Guard against divide-by-zero if currentBill is 0 (e.g. no appliances yet)
   const percentReduction = currentBill > 0 ? (savings / currentBill) * 100 : 0
 
+  // Updates only the local simulated state — does NOT touch the database
   function handleSliderChange(applianceId, value) {
     setSimulatedHours((prev) => ({ ...prev, [applianceId]: Number(value) }))
   }
 
+  // Reverts all sliders back to each appliance's actual saved hours_per_day
   function handleReset() {
     const resetHours = {}
     appliances.forEach((a) => {
@@ -105,10 +124,41 @@ export default function BillOptimizer() {
   //      table so users can keep multiple saved what-ifs (matches the
   //      "Custom Scenario #1" label in the design) without touching
   //      their real appliance data.
-  function handleSaveConfiguration() {
-    console.log('Save configuration (not yet implemented):', simulatedHours)
-  }
+  async function handleSaveConfiguration() {
+  setSaving(true)
 
+  try {
+    const updates = appliances.map((a) =>
+      supabase
+        .from('appliances')
+        .update({ hours_per_day: simulatedHours[a.id] })
+        .eq('id', a.id)
+    )
+
+    const results = await Promise.all(updates)
+
+    const failed = results.filter((r) => r.error)
+    if (failed.length > 0) {
+      console.error('Some appliances failed to save:', failed.map((f) => f.error))
+      setSaveError('Some changes could not be saved. Please try again.')
+    } else {
+      // Keep local `appliances` state in sync with what's now in the DB,
+      // so currentBill (which reads a.hours_per_day) reflects the save
+      // immediately instead of only updating after a full page refresh.
+      setAppliances((prev) =>
+        prev.map((a) => ({ ...a, hours_per_day: simulatedHours[a.id] }))
+      )
+      setSaveError('')
+    }
+  } catch (err) {
+    console.error('Failed to save configuration:', err)
+    setSaveError('Something went wrong. Please try again.')
+  } finally {
+    setSaving(false)
+  }
+}
+
+  // Feeds the two-bar comparison chart (Current vs Projected)
   const chartData = [
     { label: 'Current', value: currentBill },
     { label: 'Projected', value: projectedBill },
@@ -125,11 +175,13 @@ export default function BillOptimizer() {
           </p>
         </div>
         <div className="flex items-center gap-6">
+          {/* Static label for now — will need real scenario naming once handleSaveConfiguration is implemented */}
           <div className="text-right">
             <div className="text-xs font-semibold text-gray-400 tracking-wide">ACTIVE SIMULATION</div>
             <div className="text-primary font-bold text-sm">Custom Scenario #1</div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Placeholder avatar — not tied to any real user upload yet */}
             <img
               src="https://i.pravatar.cc/40?img=12"
               alt="User avatar"
@@ -143,9 +195,11 @@ export default function BillOptimizer() {
         </div>
       </div>
 
+      {/* Three-way conditional render: loading -> empty state -> missing rate -> actual content */}
       {loading || rateLoading ? (
         <p className="text-gray-400 text-sm">Loading your appliances…</p>
         ) : appliances.length === 0 ? (
+        // User hasn't added any appliances yet — nothing to optimize
         <div className="border border-gray-100 rounded-card p-16 text-center shadow-sm">
             <p className="font-semibold text-gray-900 mb-1">No appliances to optimize yet</p>
             <p className="text-sm text-gray-500">
@@ -153,6 +207,7 @@ export default function BillOptimizer() {
             </p>
         </div>
         ) : !ratePerKwh ? (
+        // Rate lookup failed or provider has no matching rate — can't calculate costs without it
         <div className="border border-gray-100 rounded-card p-16 text-center shadow-sm">
             <p className="font-semibold text-gray-900 mb-1">No electricity rate found</p>
             <p className="text-sm text-gray-500">
@@ -177,10 +232,13 @@ export default function BillOptimizer() {
               </button>
             </div>
 
+            {/* One row + slider per appliance, each independently adjustable */}
             <div className="flex flex-col divide-y divide-gray-100">
               {appliances.map((a) => {
+                // Look up icon/colors for this appliance's category (COOLING, KITCHEN, etc.)
                 const style = getCategoryStyle(a.category)
                 const Icon = style.icon
+                // Current slider value for this specific appliance, falling back to 0 if unset
                 const hours = simulatedHours[a.id] ?? 0
 
                 return (
@@ -207,6 +265,7 @@ export default function BillOptimizer() {
                       </div>
                     </div>
 
+                    {/* Range slider drives handleSliderChange on every drag — updates local state only */}
                     <input
                       type="range"
                       min="0"
@@ -250,6 +309,7 @@ export default function BillOptimizer() {
               <p className="text-xs font-semibold text-gray-400 tracking-wide mb-1">
                 ESTIMATED MONTHLY SAVINGS
               </p>
+              {/* Color and sign flip depending on whether savings is positive or negative */}
               <p className={`text-3xl font-extrabold mb-2 ${savings >= 0 ? 'text-success' : 'text-danger'}`}>
                 ₱{Math.abs(savings).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 <span className="text-sm font-medium text-gray-400"> / mo</span>
@@ -261,15 +321,22 @@ export default function BillOptimizer() {
                 {savings >= 0 ? 'Cost Reduction' : 'Cost Increase'}
               </span>
 
+              {/* Currently just logs to console — see BACKEND TODO above handleSaveConfiguration */}
               <button
-                onClick={handleSaveConfiguration}
-                className="w-full flex items-center justify-center gap-2 bg-primary text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition"
-              >
-                Save Configuration
-                <Check size={18} />
-              </button>
+              onClick={handleSaveConfiguration}
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 bg-primary text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save Configuration'}
+              <Check size={18} />
+            </button>
+
+            {saveError && (
+              <p className="text-xs text-danger mt-2">{saveError}</p>
+            )}
             </div>
 
+            {/* Simple 2-bar comparison: Current vs Projected bill */}
             <div className="border border-gray-100 rounded-card p-6 shadow-sm">
               <h3 className="font-bold text-gray-900 mb-4">Bill Impact Breakdown</h3>
               <ResponsiveContainer width="100%" height={200}>
@@ -278,6 +345,7 @@ export default function BillOptimizer() {
                   <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                    {/* Cell order must match chartData order: [0]=Current (gray), [1]=Projected (blue) */}
                     <Cell fill="#E5E7EB" />
                     <Cell fill="#2563EB" />
                   </Bar>
