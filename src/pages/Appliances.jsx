@@ -10,6 +10,15 @@ import { getCategoryStyle } from '../lib/applianceStyles'
 import { useElectricityRate } from '../hooks/useElectricityRate'
 import { calculateMonthlyCost } from '../lib/calculations'
 
+// NOTE: the live `energyEfficiency` hook is intentionally NOT imported
+// anymore. It called the Gemini edge function automatically whenever
+// `userAppliances`/`household_type` changed, which is exactly the
+// "runs on every load" behavior we're moving away from. The hook's logic
+// still exists at '../hooks/energyEfficiency' and gets reused (not via
+// the hook itself, but a direct `supabase.functions.invoke` call) inside
+// the commented-out `handleRefreshEfficiency` function below, which is
+// ready to wire up to a button once one exists.
+
 export default function Appliances() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('ALL CATEGORIES')
@@ -22,20 +31,77 @@ export default function Appliances() {
   // NOTE: despite the name, this state currently holds rows from
   // `appliance_choices` (the shared catalog), NOT the user's own
   // `appliances` table rows. See the FETCH APPLIANCE CATALOG block below.
+
   const [appliances, setAppliances] = useState([])
-  const[userAppliances, setUserAppliances] = useState([]) // <-- added state for user's own appliances
+  const [userAppliances, setUserAppliances] = useState([]) // <-- holds the user's own appliances
+
+  // --- AI EFFICIENCY SUGGESTION STATE ---
+  // This used to come live from the `energyEfficiency` hook on every
+  // render where its inputs changed. Now it's just local state, populated
+  // by `fetchStoredEfficiency()` below (reads the last-saved row from
+  // `energy_ai_suggestions`). It will only change again once a "Refresh"
+  // button (not built yet) calls `handleRefreshEfficiency()`.
+  const [efficiency, setEfficiency] = useState(null)
+  const [efficiencyLoading, setEfficiencyLoading] = useState(false)
+
+  // --- DELETE CONFIRMATION STATE ---
+  // Instead of window.confirm, we track which appliance (if any) is
+  // pending deletion. The custom banner below renders conditionally
+  // based on this value.
+  const [pendingDeleteId, setPendingDeleteId] = useState(null)
+
+  // ============================================================
+  // Fetches the most recently saved AI efficiency suggestion for this
+  // user from `energy_ai_suggestions` (one row per user_id). This is a
+  // read of stored/cached data — it does NOT call the Gemini edge
+  // function. That only happens from `handleRefreshEfficiency()` once a
+  // button triggers it.
+  //
+  // `.maybeSingle()` (not `.single()`) because a brand-new user won't
+  // have a row yet, and that's a valid "nothing to show" state, not an
+  // error.
+  // ============================================================
+  async function fetchStoredEfficiency(userId) {
+    setEfficiencyLoading(true)
+
+    const { data, error } = await supabase
+      .from('energy_ai_suggestions')
+      .select('label, comparison, tone, summary, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Failed to load stored efficiency suggestion:', error)
+      setEfficiency(null)
+    } else if (data) {
+      setEfficiency({
+        rating: data.label,
+        percentVsAverage: data.comparison,
+        tone: data.tone,
+        reasoning: data.summary,
+        updatedAt: data.updated_at,
+      })
+    } else {
+      setEfficiency(null) // no suggestion generated yet for this user
+    }
+
+    setEfficiencyLoading(false)
+  }
+
   // ============================================================
   // Central data-loading function for this page. Pulled out of useEffect
   // so it can be re-run on demand — specifically after the Add Appliance
   // modal successfully inserts a new row (see handleApplianceAdded below),
   // not just once when the page first mounts.
   //
-  // Fires four separate Supabase calls, in this order:
-  //   1. auth.getUser()              -> confirm session, else redirect
-  //   2. appliance_choices  (select) -> shared catalog for dropdown/table
-  //   3. profiles           (select) -> current user's name + provider_id
-  //   4. providers          (select) -> human-readable provider name
-  //   5. rpc get_appliance_categories -> distinct category list for filters
+  // Fires several separate Supabase calls, in this order:
+  //   1. auth.getUser()               -> confirm session, else redirect
+  //   2. appliance_choices  (select)  -> shared catalog for dropdown/table
+  //   3. profiles           (select)  -> current user's name + provider_id
+  //   4. providers          (select)  -> human-readable provider name
+  //   5. appliances         (select)  -> the user's own appliance rows
+  //   6. rpc get_appliance_categories -> distinct category list for filters
+  //   7. energy_ai_suggestions (select) -> last-saved AI efficiency read
   // ============================================================
   async function loadAppliancePageData() {
     // --- AUTH CHECK ---
@@ -71,7 +137,7 @@ export default function Appliances() {
     // because `profiles.id` is the PK and is 1:1 with auth.users.id.
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('full_name, provider_id')
+      .select('full_name, provider_id, household_type')
       .eq('id', user.id)
       .single()
 
@@ -98,17 +164,18 @@ export default function Appliances() {
         setProviderName(providerData?.name || 'Unknown Provider')
       }
     }
+
     // --- FETCH USER'S OWN APPLIANCES ---
-      const { data: userApplianceData, error: userApplianceError } = await supabase
+    const { data: userApplianceData, error: userApplianceError } = await supabase
       .from('appliances')
       .select('*')
       .eq('user_id', user.id)
 
-      if (userApplianceError) {
-        console.error('Failed to load user appliances:', userApplianceError)
-      } else {
-        setUserAppliances(userApplianceData || [])
-      }
+    if (userApplianceError) {
+      console.error('Failed to load user appliances:', userApplianceError)
+    } else {
+      setUserAppliances(userApplianceData || [])
+    }
 
     // --- FETCH CATEGORY LIST ---
     // Calls a Postgres function (`get_appliance_categories`) rather than
@@ -126,7 +193,118 @@ export default function Appliances() {
     }
 
     setCategories(['ALL CATEGORIES', ...categoryData.map((row) => row.value)])
+
+    // --- FETCH STORED AI EFFICIENCY SUGGESTION ---
+    // Read-only load of whatever was last generated & saved. No Gemini
+    // call happens here.
+    fetchStoredEfficiency(user.id)
   }
+
+  // --- DELETE FLOW ---
+  // Step 1: user clicks the trash icon on a row -> just opens the
+  // confirmation banner, no DB call happens yet.
+  function handleDeleteAppliance(applianceId) {
+    setPendingDeleteId(applianceId)
+  }
+
+  // Step 2a: user clicks "Cancel" on the banner -> close it, nothing changes.
+  function cancelDelete() {
+    setPendingDeleteId(null)
+  }
+
+  // Step 2b: user clicks "Confirm Delete" on the banner -> actually delete
+  // from Supabase, then update local state directly (no full re-fetch)
+  // so the row disappears instantly.
+  async function confirmDelete() {
+    const applianceId = pendingDeleteId
+    setPendingDeleteId(null) // close the banner immediately for snappy UX
+
+    const { error } = await supabase
+      .from('appliances')
+      .delete()
+      .eq('id', applianceId)
+
+    if (error) {
+      console.error('Error deleting appliance:', error)
+      alert('Failed to delete appliance. Please try again.')
+      return
+    }
+
+    setUserAppliances((prev) => prev.filter((a) => a.id !== applianceId))
+  }
+
+  // ============================================================
+  // TODO: WIRE UP TO A "Refresh AI Suggestion" BUTTON LATER
+  // ------------------------------------------------------------
+  // Currently disconnected on purpose — nothing calls this yet. Once a
+  // button exists (e.g. next to the "ENERGY EFFICIENCY" summary card),
+  // just call handleRefreshEfficiency from its onClick and uncomment
+  // this block.
+  //
+  // What it does when wired up:
+  //   1. Calls the Gemini-powered `energy-efficiency` edge function
+  //      directly (the same call the old `energyEfficiency` hook made
+  //      internally under the hood)
+  //   2. Upserts the result into `energy_ai_suggestions`, keyed by
+  //      user_id, so it's persisted and doesn't need regenerating on
+  //      every page load
+  //   3. Updates local `efficiency` state immediately so the UI reflects
+  //      the new suggestion without needing a re-fetch
+  //
+  // NOTE: `.upsert(..., { onConflict: 'user_id' })` requires a UNIQUE
+  // constraint on `energy_ai_suggestions.user_id` in Supabase — add one
+  // if it doesn't already exist, or every click will just insert a new
+  // row instead of replacing the old one.
+  //
+  // async function handleRefreshEfficiency() {
+  //   const { data: { user } } = await supabase.auth.getUser()
+  //   if (!user) return
+  //
+  //   setEfficiencyLoading(true)
+  //
+  //   const { data: result, error: fnError } = await supabase.functions.invoke(
+  //     'energy-efficiency',
+  //     { body: { appliances: userAppliances, householdType: profile?.household_type } }
+  //   )
+  //
+  //   if (fnError) {
+  //     console.error('Failed to generate efficiency suggestion:', fnError)
+  //     setEfficiencyLoading(false)
+  //     return
+  //   }
+  //
+  //   // Derive a simple tone tag once, at generation time, so the JSX
+  //   // below never has to recompute it from percentVsAverage.
+  //   const tone = result.percentVsAverage <= 0 ? 'positive' : 'warning'
+  //
+  //   const { error: upsertError } = await supabase
+  //     .from('energy_ai_suggestions')
+  //     .upsert(
+  //       {
+  //         user_id: user.id,
+  //         label: result.rating,
+  //         comparison: result.percentVsAverage,
+  //         tone,
+  //         summary: result.reasoning,
+  //         updated_at: new Date().toISOString(),
+  //       },
+  //       { onConflict: 'user_id' }
+  //     )
+  //
+  //   if (upsertError) {
+  //     console.error('Failed to save efficiency suggestion:', upsertError)
+  //   }
+  //
+  //   setEfficiency({
+  //     rating: result.rating,
+  //     percentVsAverage: result.percentVsAverage,
+  //     tone,
+  //     reasoning: result.reasoning,
+  //     updatedAt: new Date().toISOString(),
+  //   })
+  //   setEfficiencyLoading(false)
+  // }
+  // ============================================================
 
   // Run once on mount. Empty dependency array means this won't re-fire on
   // every re-render — subsequent refreshes only happen via the explicit
@@ -137,17 +315,17 @@ export default function Appliances() {
 
   const displayName = profile?.full_name || '....'
   const totalWattage = userAppliances.reduce((total, appliance) => {
-  return total + Number(appliance.wattage || 0)
+    return total + Number(appliance.wattage || 0)
   }, 0)
   const totalMonthlyCost = ratePerKwh
-  ? userAppliances.reduce((sum, a) => sum + calculateMonthlyCost(a, ratePerKwh), 0)
-  : null
+    ? userAppliances.reduce((sum, a) => sum + calculateMonthlyCost(a, ratePerKwh), 0)
+    : null
 
   const filteredUserAppliances = userAppliances.filter((a) => {
-  const matchesSearch = (a.name || a.model_name || '').toLowerCase().includes(search.toLowerCase())
-  const matchesCategory = category === 'ALL CATEGORIES' || a.category === category
+    const matchesSearch = (a.name || a.model_name || '').toLowerCase().includes(search.toLowerCase())
+    const matchesCategory = category === 'ALL CATEGORIES' || a.category === category
 
-  return matchesSearch && matchesCategory
+    return matchesSearch && matchesCategory
   })
 
   // Called by AddApplianceModal via its onApplianceAdded prop, right after
@@ -239,112 +417,113 @@ export default function Appliances() {
         </button>
       </div>
 
-      
-
       {/* Table */}
-<div className="border border-gray-100 rounded-card overflow-hidden shadow-sm">
-  {filteredUserAppliances.length > 0 ? (
-    <table className="w-full text-sm">
-      <thead className="bg-gray-50 border-b border-gray-100">
-        <tr>
-          <th className="px-6 py-4 text-left font-semibold text-gray-500">Appliance</th>
-          <th className="px-6 py-4 text-left font-semibold text-gray-500">Category</th>
-          <th className="px-6 py-4 text-left font-semibold text-gray-500">Wattage</th>
-          <th className="px-6 py-4 text-left font-semibold text-gray-500">Hours / Day</th>
-          <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Use</th>
-          <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Cost</th>
-          <th className="px-6 py-4 text-right font-semibold text-gray-500">Actions</th>
-        </tr>
-      </thead>
+      <div className="border border-gray-100 rounded-card overflow-hidden shadow-sm">
+        {filteredUserAppliances.length > 0 ? (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500">Appliance</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500">Category</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500">Wattage</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500">Hours / Day</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Use</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Cost</th>
+                <th className="px-6 py-4 text-right font-semibold text-gray-500">Actions</th>
+              </tr>
+            </thead>
 
-      <tbody className="divide-y divide-gray-100">
-        {filteredUserAppliances.map((appliance) => {
-          const wattage = Number(appliance.wattage || 0)
-          const hoursPerDay = Number(appliance.hours_per_day || 0)
-          const monthlyKwh = ((wattage * hoursPerDay * 30) / 1000).toFixed(1)
+            <tbody className="divide-y divide-gray-100">
+              {filteredUserAppliances.map((appliance) => {
+                const wattage = Number(appliance.wattage || 0)
+                const hoursPerDay = Number(appliance.hours_per_day || 0)
+                const monthlyKwh = ((wattage * hoursPerDay * 30) / 1000).toFixed(1)
 
-          return (
-            <tr key={appliance.id} className="hover:bg-gray-50 transition">
-              <td className="px-6 py-4">
-                <div className="font-semibold text-gray-900">
-                  {appliance.name || appliance.model_name || 'Unnamed Appliance'}
-                </div>
-              </td>
+                return (
+                  <tr key={appliance.id} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4">
+                      <div className="font-semibold text-gray-900">
+                        {appliance.name || appliance.model_name || 'Unnamed Appliance'}
+                      </div>
+                    </td>
 
-              <td className="px-6 py-4">
-                {(() => {
-                  const style = getCategoryStyle(appliance.category)
-                  const Icon = style.icon
-                  return (
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Icon size={16} className={style.iconColor} />
-                      <span className="font-semibold">{appliance.category || 'Uncategorized'}</span>
-                    </div>
-                  )
-                })()}
-              </td>
+                    <td className="px-6 py-4">
+                      {(() => {
+                        const style = getCategoryStyle(appliance.category)
+                        const Icon = style.icon
+                        return (
+                          <div className="flex items-center gap-2 text-gray-700">
+                            <Icon size={16} className={style.iconColor} />
+                            <span className="font-semibold">{appliance.category || 'Uncategorized'}</span>
+                          </div>
+                        )
+                      })()}
+                    </td>
 
-              <td className="px-6 py-4 font-semibold text-gray-900">
-                {wattage.toLocaleString()} W
-              </td>
+                    <td className="px-6 py-4 font-semibold text-gray-900">
+                      {wattage.toLocaleString()} W
+                    </td>
 
-              <td className="px-6 py-4 text-gray-600">
-                {hoursPerDay} hrs
-              </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {hoursPerDay} hrs
+                    </td>
 
-              <td className="px-6 py-4 font-semibold text-gray-900">
-                {monthlyKwh} kWh
-              </td>
+                    <td className="px-6 py-4 font-semibold text-gray-900">
+                      {monthlyKwh} kWh
+                    </td>
 
-              <td className="px-6 py-4 font-semibold text-gray-900">
-                {ratePerKwh
-                  ? `₱${calculateMonthlyCost(appliance, ratePerKwh).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                  : rateLoading ? '…' : 'N/A'}
-              </td>
+                    <td className="px-6 py-4 font-semibold text-gray-900">
+                      {ratePerKwh
+                        ? `₱${calculateMonthlyCost(appliance, ratePerKwh).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : rateLoading ? '…' : 'N/A'}
+                    </td>
 
-              <td className="px-6 py-4">
-                <div className="flex justify-end gap-2">
-                  <button className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">
-                    <Pencil size={15} />
-                  </button>
-                  <button className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-danger hover:bg-red-50">
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
-  ) : (
-    <div className="flex flex-col items-center justify-center text-center py-16">
-      <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-        <Plug size={24} className="text-gray-300" />
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-2">
+                        <button className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAppliance(appliance.id)}
+                          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-danger hover:bg-red-50"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center py-16">
+            <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+              <Plug size={24} className="text-gray-300" />
+            </div>
+
+            <p className="font-semibold text-gray-900 mb-1">
+              {userAppliances.length === 0 ? 'No appliances yet' : 'No matching appliances'}
+            </p>
+
+            <p className="text-sm text-gray-500 max-w-xs mb-5">
+              {userAppliances.length === 0
+                ? 'Add your first appliance to start tracking your electricity usage.'
+                : 'Try a different search term or category.'}
+            </p>
+
+            {userAppliances.length === 0 && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition"
+              >
+                <Plus size={18} />
+                Add Appliance
+              </button>
+            )}
+          </div>
+        )}
       </div>
-
-      <p className="font-semibold text-gray-900 mb-1">
-        {userAppliances.length === 0 ? 'No appliances yet' : 'No matching appliances'}
-      </p>
-
-      <p className="text-sm text-gray-500 max-w-xs mb-5">
-        {userAppliances.length === 0
-          ? 'Add your first appliance to start tracking your electricity usage.'
-          : 'Try a different search term or category.'}
-      </p>
-
-      {userAppliances.length === 0 && (
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition"
-        >
-          <Plus size={18} />
-          Add Appliance
-        </button>
-      )}
-    </div>
-  )}
-</div>
 
       {/* Pagination */}
       {/* UI-only for now — Previous/Next buttons aren't wired to real
@@ -369,8 +548,6 @@ export default function Appliances() {
       </div>
 
       {/* Summary cards */}
-      {/* ⚠️ ENERGY EFFICIENCY IS A HARDCODED PLACEHOLDER — compute an actual 
-          efficiency comparison and usage-vs-target check server-side or client-side. */}
       <div className="grid grid-cols-3 gap-6 mt-10 pt-8 border-t border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
@@ -384,18 +561,29 @@ export default function Appliances() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-            <Leaf size={18} className="text-success" />
-          </div>
-          <div>
-            <div className="text-xs text-gray-500 font-medium tracking-wide">ENERGY EFFICIENCY</div>
-            <div className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
-              Good
-              <span className="text-xs font-semibold text-success bg-green-50 px-2 py-0.5 rounded-full">
-                +4% vs Avg
+        {/* ENERGY EFFICIENCY — now reads from local `efficiency` state,
+            which is populated by fetchStoredEfficiency() (a read of
+            `energy_ai_suggestions`), NOT a live Gemini call. It will stay
+            exactly as-is until a "Refresh" button (not built yet) calls
+            handleRefreshEfficiency() above.
+            TODO: add that button here once ready — e.g. a small refresh
+            icon next to the label that calls handleRefreshEfficiency. */}
+        <div>
+          <div className="text-xs text-gray-500 font-medium tracking-wide">ENERGY EFFICIENCY</div>
+          <div className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+            {efficiencyLoading ? 'Loading…' : efficiency?.rating || 'N/A'}
+            {efficiency && (
+              <span
+                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                  efficiency.tone === 'positive'
+                    ? 'text-success bg-green-50'
+                    : 'text-warning bg-orange-50'
+                }`}
+              >
+                {efficiency.percentVsAverage > 0 ? '+' : ''}
+                {efficiency.percentVsAverage}% vs Avg
               </span>
-            </div>
+            )}
           </div>
         </div>
 
@@ -437,6 +625,42 @@ export default function Appliances() {
         applianceChoices={appliances}
         onApplianceAdded={handleApplianceAdded}
       />
+
+      {/* --- CUSTOM DELETE CONFIRMATION BANNER --- */}
+      {/* Renders only when pendingDeleteId is set (i.e. the user clicked a
+          trash icon). Replaces window.confirm with a styled in-app modal.
+          "Cancel" just clears pendingDeleteId with no DB call. "Confirm
+          Delete" runs confirmDelete(), which deletes from Supabase and
+          removes the row from local state directly — no re-fetch needed. */}
+      {pendingDeleteId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-danger" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-lg">Delete appliance?</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">
+              This will permanently remove this appliance from your list. This action can't be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-xl bg-danger text-white text-sm font-semibold hover:bg-red-600 transition"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
