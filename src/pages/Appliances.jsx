@@ -26,6 +26,7 @@ export default function Appliances() {
   const [profile, setProfile] = useState(null)
   const [providerName, setProviderName] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingAppliance, setEditingAppliance] = useState(null)
   const { rate: ratePerKwh, loading: rateLoading } = useElectricityRate(profile?.provider_id)
 
   // NOTE: despite the name, this state currently holds rows from
@@ -337,6 +338,21 @@ export default function Appliances() {
     loadAppliancePageData()
   }
 
+  function handleOpenAddModal() {
+    setEditingAppliance(null)
+    setIsModalOpen(true)
+  }
+
+  function handleOpenEditModal(appliance) {
+    setEditingAppliance(appliance)
+    setIsModalOpen(true)
+  }
+
+  function handleCloseModal() {
+    setIsModalOpen(false)
+    setEditingAppliance(null)
+  }
+
   // --- CLIENT-SIDE FILTERING ---
   // Search + category filtering both happen in the browser against the
   // already-fetched `appliances` array — no re-querying Supabase per
@@ -409,7 +425,7 @@ export default function Appliances() {
         <div className="flex-1" />
 
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={handleOpenAddModal}
           className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition"
         >
           <Plus size={18} />
@@ -480,7 +496,10 @@ export default function Appliances() {
 
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-2">
-                        <button className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">
+                        <button
+                          onClick={() => handleOpenEditModal(appliance)}
+                          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                        >
                           <Pencil size={15} />
                         </button>
                         <button
@@ -514,7 +533,7 @@ export default function Appliances() {
 
             {userAppliances.length === 0 && (
               <button
-                onClick={() => setIsModalOpen(true)}
+                onClick={handleOpenAddModal}
                 className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition"
               >
                 <Plus size={18} />
@@ -620,10 +639,11 @@ export default function Appliances() {
           can autofill brand/model/wattage/hours from a known appliance. */}
       <AddApplianceModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleCloseModal}
         categories={categories.filter((c) => c !== 'ALL CATEGORIES')}
         applianceChoices={appliances}
-        onApplianceAdded={handleApplianceAdded}
+        editingAppliance={editingAppliance}
+        onSaved={handleApplianceAdded}
       />
 
       {/* --- CUSTOM DELETE CONFIRMATION BANNER --- */}

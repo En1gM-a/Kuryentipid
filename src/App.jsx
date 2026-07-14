@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Appliances from './pages/Appliances'
 import BillOptimizer from './pages/BillOptimizer'
+import Profile from './pages/Profile'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/appliances" element={<Appliances />} />
           <Route path="/optimizer" element={<BillOptimizer />} />
+          <Route path="/profile" element={<Profile />} />
           {/* MORE PAGES... /dashboard, /optimizer, /history, /profile, /settings */}
         </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

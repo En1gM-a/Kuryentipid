@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabaseClient'
 import { getCategoryStyle } from '../lib/applianceStyles' // maps category -> icon + colors for UI badges
 import { calculateMonthlyCost } from '../lib/calculations' // shared cost formula, reused for both current + projected bill
 import { useElectricityRate } from '../hooks/useElectricityRate' // custom hook, fetches ₱/kWh rate for a given provider_id
+import { Sparkles, Check as CheckIcon } from 'lucide-react'
+import { useBillRecommendations } from '../hooks/useBillRecommendations'
 
 export default function BillOptimizer() {
   // Logged-in user's profile row (need provider_id to know which rate to use)
@@ -22,6 +24,15 @@ export default function BillOptimizer() {
   const [loading, setLoading] = useState(true)
   // Custom hook: looks up the ₱/kWh rate once we know the user's provider_id
   const { rate: ratePerKwh, loading: rateLoading } = useElectricityRate(profile?.provider_id)
+  const {
+    recommendations,
+    loading: recsLoading,
+    error: recsError,
+    remaining: recsRemaining,
+    dailyLimit,
+    generate: generateRecommendations,
+  } = useBillRecommendations(appliances, ratePerKwh)
+  const [acceptedRecIds, setAcceptedRecIds] = useState(new Set())
 
   useEffect(() => {
     async function load() {
@@ -107,6 +118,13 @@ export default function BillOptimizer() {
     setSimulatedHours((prev) => ({ ...prev, [applianceId]: Number(value) }))
   }
 
+  function handleAcceptRecommendation(rec, index) {
+    if (rec.appliance_id && rec.suggested_hours_per_day != null) {
+      handleSliderChange(rec.appliance_id, rec.suggested_hours_per_day)
+    }
+    setAcceptedRecIds((prev) => new Set(prev).add(index))
+  }
+
   // Reverts all sliders back to each appliance's actual saved hours_per_day
   function handleReset() {
     const resetHours = {}
@@ -116,14 +134,6 @@ export default function BillOptimizer() {
     setSimulatedHours(resetHours)
   }
 
-  // BACKEND TODO: currently does nothing but log.
-  // Decide whether saving the configuration should mean:
-  //   a) overwriting each appliance's hours_per_day in `appliances` with
-  //      the simulated values, or
-  //   b) inserting a new row into a separate `scenarios`/`simulations`
-  //      table so users can keep multiple saved what-ifs (matches the
-  //      "Custom Scenario #1" label in the design) without touching
-  //      their real appliance data.
   async function handleSaveConfiguration() {
   setSaving(true)
 
@@ -164,6 +174,8 @@ export default function BillOptimizer() {
     { label: 'Projected', value: projectedBill },
   ]
 
+  const dataReady = !loading && !rateLoading && appliances.length > 0 && ratePerKwh
+
   return (
     <div className="px-8 py-10 max-w-7xl mx-auto">
       {/* Header */}
@@ -174,13 +186,8 @@ export default function BillOptimizer() {
             Simulate changes to your appliance usage and see real-time impact on your bill.
           </p>
         </div>
-        <div className="flex items-center gap-6">
-          {/* Static label for now — will need real scenario naming once handleSaveConfiguration is implemented */}
-          <div className="text-right">
-            <div className="text-xs font-semibold text-gray-400 tracking-wide">ACTIVE SIMULATION</div>
-            <div className="text-primary font-bold text-sm">Custom Scenario #1</div>
-          </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
             {/* Placeholder avatar — not tied to any real user upload yet */}
             <img
               src="https://i.pravatar.cc/40?img=12"
@@ -355,6 +362,82 @@ export default function BillOptimizer() {
                 Based on current kWh rates and simulated usage patterns.
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Smart AI Recommendations */}
+      {dataReady && (
+        <div className="border border-gray-100 rounded-card p-6 shadow-sm mt-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <Sparkles size={18} className="text-primary" />
+              <h2 className="text-lg font-bold text-gray-900">Smart AI Recommendations</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400">
+                {recsRemaining} of {dailyLimit} left today
+              </span>
+              <button
+                onClick={generateRecommendations}
+                disabled={recsLoading || recsRemaining === 0}
+                className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {recsLoading ? 'Thinking…' : 'Get AI Recommendations'}
+              </button>
+            </div>
+          </div>
+
+          {recsError && (
+            <p className="text-sm text-danger bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">
+              {recsError.message || 'Something went wrong getting recommendations.'}
+            </p>
+          )}
+
+          {recommendations.length === 0 && !recsLoading && !recsError && (
+            <p className="text-sm text-gray-400">
+              Click "Get AI Recommendations" for personalized ways to lower your bill.
+            </p>
+          )}
+
+          <div className="grid grid-cols-3 gap-5">
+            {recommendations.map((rec, index) => {
+              const isAccepted = acceptedRecIds.has(index)
+              return (
+                <div key={index} className="border border-gray-100 rounded-card p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-success bg-green-50 px-2.5 py-1 rounded-full uppercase">
+                      {rec.difficulty}
+                    </span>
+                  </div>
+                  <p className="font-bold text-gray-900 mb-1">{rec.title}</p>
+                  <p className="text-sm text-gray-500 mb-4">{rec.description}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-success font-bold">
+                      ₱{Number(rec.estimated_monthly_savings).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      <span className="text-xs text-gray-400 font-normal">/mo</span>
+                    </span>
+                    <button
+                      onClick={() => handleAcceptRecommendation(rec, index)}
+                      disabled={isAccepted}
+                      className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition ${
+                        isAccepted
+                          ? 'bg-green-50 text-success cursor-default'
+                          : 'bg-primary text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      {isAccepted ? (
+                        <>
+                          <Check size={14} /> Applied
+                        </>
+                      ) : (
+                        'Accept'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
