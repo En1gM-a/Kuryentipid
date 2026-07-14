@@ -10,14 +10,27 @@ import { getCategoryStyle } from '../lib/applianceStyles'
 import { useElectricityRate } from '../hooks/useElectricityRate'
 import { calculateMonthlyCost } from '../lib/calculations'
 
-// NOTE: the live `energyEfficiency` hook is intentionally NOT imported
-// anymore. It called the Gemini edge function automatically whenever
-// `userAppliances`/`household_type` changed, which is exactly the
-// "runs on every load" behavior we're moving away from. The hook's logic
-// still exists at '../hooks/energyEfficiency' and gets reused (not via
-// the hook itself, but a direct `supabase.functions.invoke` call) inside
-// the commented-out `handleRefreshEfficiency` function below, which is
-// ready to wire up to a button once one exists.
+// NOTE: the live `energyEfficiency` hook is no longer used directly.
+// Its logic (calling the Gemini edge function) is reused below inside
+// `generateAndSaveEfficiency`, which now only runs once per Philippine
+// calendar day per user, driven by `fetchStoredEfficiency`.
+
+// ============================================================
+// Returns a "YYYY-MM-DD" string representing what the date is in the
+// Philippines (UTC+8, no DST) for a given JS Date. Used to compare
+// "today" vs. the day the last AI suggestion was generated, so we only
+// ever call Gemini once per PH calendar day.
+//
+// Trick: shift the timestamp by +8 hours, then read the UTC date parts
+// off of it. Because we've already shifted the clock forward by the PH
+// offset, the UTC Y/M/D of the shifted instant equals the PH-local Y/M/D
+// of the original instant.
+// ============================================================
+function getPHDateString(date = new Date()) {
+  const PH_OFFSET_MS = 8 * 60 * 60 * 1000
+  const shifted = new Date(date.getTime() + PH_OFFSET_MS)
+  return shifted.toISOString().slice(0, 10) // "YYYY-MM-DD"
+}
 
 export default function Appliances() {
   const [search, setSearch] = useState('')
@@ -37,11 +50,10 @@ export default function Appliances() {
   const [userAppliances, setUserAppliances] = useState([]) // <-- holds the user's own appliances
 
   // --- AI EFFICIENCY SUGGESTION STATE ---
-  // This used to come live from the `energyEfficiency` hook on every
-  // render where its inputs changed. Now it's just local state, populated
-  // by `fetchStoredEfficiency()` below (reads the last-saved row from
-  // `energy_ai_suggestions`). It will only change again once a "Refresh"
-  // button (not built yet) calls `handleRefreshEfficiency()`.
+  // Populated by `fetchStoredEfficiency()` below. That function decides,
+  // based on the PH-time date of `energy_ai_suggestions.updated_at`,
+  // whether to just show the stored row or regenerate it via Gemini
+  // first (see `generateAndSaveEfficiency`).
   const [efficiency, setEfficiency] = useState(null)
   const [efficiencyLoading, setEfficiencyLoading] = useState(false)
 
@@ -52,17 +64,82 @@ export default function Appliances() {
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
 
   // ============================================================
-  // Fetches the most recently saved AI efficiency suggestion for this
-  // user from `energy_ai_suggestions` (one row per user_id). This is a
-  // read of stored/cached data — it does NOT call the Gemini edge
-  // function. That only happens from `handleRefreshEfficiency()` once a
-  // button triggers it.
+  // Calls the Gemini-powered `energy-efficiency` edge function, then
+  // upserts the result into `energy_ai_suggestions` keyed by user_id.
+  // Because of `onConflict: 'user_id'` (and the UNIQUE constraint on
+  // that column), this UPDATES the user's existing row in place instead
+  // of inserting a new one every time it runs.
   //
-  // `.maybeSingle()` (not `.single()`) because a brand-new user won't
-  // have a row yet, and that's a valid "nothing to show" state, not an
-  // error.
+  // Called from two places:
+  //   1. `fetchStoredEfficiency`, automatically, only when there's no
+  //      stored row yet or the stored row is from a previous PH day.
+  //   2. A future manual "Refresh" button, if/when one gets built —
+  //      just call this directly with the same three args.
   // ============================================================
-  async function fetchStoredEfficiency(userId) {
+  async function generateAndSaveEfficiency(userId, appliancesForGeneration, householdType) {
+    setEfficiencyLoading(true)
+
+    const { data: result, error: fnError } = await supabase.functions.invoke(
+      'energy-efficiency',
+      { body: { appliances: appliancesForGeneration, householdType } }
+    )
+
+    if (fnError) {
+      console.error('Failed to generate efficiency suggestion:', fnError)
+      setEfficiencyLoading(false)
+      return
+    }
+
+    // Derive a simple tone tag once, at generation time, so the JSX
+    // below never has to recompute it from percentVsAverage.
+    const tone = result.percentVsAverage <= 0 ? 'positive' : 'warning'
+    const nowIso = new Date().toISOString()
+
+    const { error: upsertError } = await supabase
+      .from('energy_ai_suggestions')
+      .upsert(
+        {
+          user_id: userId,
+          label: result.rating,
+          comparison: result.percentVsAverage,
+          tone,
+          summary: result.reasoning,
+          updated_at: nowIso,
+        },
+        { onConflict: 'user_id' }
+      )
+
+    if (upsertError) {
+      console.error('Failed to save efficiency suggestion:', upsertError)
+    }
+
+    setEfficiency({
+      rating: result.rating,
+      percentVsAverage: result.percentVsAverage,
+      tone,
+      reasoning: result.reasoning,
+      updatedAt: nowIso,
+    })
+    setEfficiencyLoading(false)
+  }
+
+  // ============================================================
+  // Loads the most recently saved AI efficiency suggestion for this user
+  // from `energy_ai_suggestions` (one row per user_id, `.maybeSingle()`
+  // since a brand-new user won't have a row yet).
+  //
+  // Then decides whether that stored row is "fresh enough":
+  //   - If a row exists AND its `updated_at`, converted to Philippine
+  //     time, falls on today's PH date -> just display it. No Gemini call.
+  //   - If there's no row yet, OR the row's PH-date is from a previous
+  //     day -> call `generateAndSaveEfficiency` to regenerate it once and
+  //     save the fresh result (updating the same row, not adding a new one).
+  //
+  // This means Gemini only ever gets called at most once per user per PH
+  // calendar day (effectively "resets" at 12:00 AM Philippine time),
+  // regardless of how many times the user visits this page that day.
+  // ============================================================
+  async function fetchStoredEfficiency(userId, appliancesForGeneration, householdType) {
     setEfficiencyLoading(true)
 
     const { data, error } = await supabase
@@ -74,7 +151,16 @@ export default function Appliances() {
     if (error) {
       console.error('Failed to load stored efficiency suggestion:', error)
       setEfficiency(null)
-    } else if (data) {
+      setEfficiencyLoading(false)
+      return
+    }
+
+    const todayPH = getPHDateString()
+    const lastUpdatedPH = data?.updated_at ? getPHDateString(new Date(data.updated_at)) : null
+
+    if (data && lastUpdatedPH === todayPH) {
+      // Already generated today (Philippine time) — just show it, no
+      // Gemini call needed.
       setEfficiency({
         rating: data.label,
         percentVsAverage: data.comparison,
@@ -82,11 +168,13 @@ export default function Appliances() {
         reasoning: data.summary,
         updatedAt: data.updated_at,
       })
-    } else {
-      setEfficiency(null) // no suggestion generated yet for this user
+      setEfficiencyLoading(false)
+      return
     }
 
-    setEfficiencyLoading(false)
+    // No row yet, or the stored suggestion is from a previous PH day —
+    // regenerate via Gemini and upsert (updates the same row).
+    await generateAndSaveEfficiency(userId, appliancesForGeneration, householdType)
   }
 
   // ============================================================
@@ -102,7 +190,7 @@ export default function Appliances() {
   //   4. providers          (select)  -> human-readable provider name
   //   5. appliances         (select)  -> the user's own appliance rows
   //   6. rpc get_appliance_categories -> distinct category list for filters
-  //   7. energy_ai_suggestions (select) -> last-saved AI efficiency read
+  //   7. energy_ai_suggestions (select, maybe regenerate) -> AI efficiency
   // ============================================================
   async function loadAppliancePageData() {
     // --- AUTH CHECK ---
@@ -133,9 +221,10 @@ export default function Appliances() {
     }
 
     // --- FETCH USER PROFILE ---
-    // Only need full_name (for the header greeting) and provider_id (to
-    // look up the provider's display name next). `.single()` is safe here
-    // because `profiles.id` is the PK and is 1:1 with auth.users.id.
+    // Need full_name (header greeting), provider_id (provider lookup
+    // next), and household_type (fed into the AI efficiency generation).
+    // `.single()` is safe here because `profiles.id` is the PK and is
+    // 1:1 with auth.users.id.
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
       .select('full_name, provider_id, household_type')
@@ -195,10 +284,11 @@ export default function Appliances() {
 
     setCategories(['ALL CATEGORIES', ...categoryData.map((row) => row.value)])
 
-    // --- FETCH STORED AI EFFICIENCY SUGGESTION ---
-    // Read-only load of whatever was last generated & saved. No Gemini
-    // call happens here.
-    fetchStoredEfficiency(user.id)
+    // --- LOAD (AND POSSIBLY REGENERATE) AI EFFICIENCY SUGGESTION ---
+    // Passes the just-fetched appliances + household_type along, in case
+    // `fetchStoredEfficiency` decides today's suggestion needs to be
+    // (re)generated via Gemini.
+    fetchStoredEfficiency(user.id, userApplianceData || [], profileData?.household_type)
   }
 
   // --- DELETE FLOW ---
@@ -234,79 +324,6 @@ export default function Appliances() {
     setUserAppliances((prev) => prev.filter((a) => a.id !== applianceId))
   }
 
-  // ============================================================
-  // TODO: WIRE UP TO A "Refresh AI Suggestion" BUTTON LATER
-  // ------------------------------------------------------------
-  // Currently disconnected on purpose — nothing calls this yet. Once a
-  // button exists (e.g. next to the "ENERGY EFFICIENCY" summary card),
-  // just call handleRefreshEfficiency from its onClick and uncomment
-  // this block.
-  //
-  // What it does when wired up:
-  //   1. Calls the Gemini-powered `energy-efficiency` edge function
-  //      directly (the same call the old `energyEfficiency` hook made
-  //      internally under the hood)
-  //   2. Upserts the result into `energy_ai_suggestions`, keyed by
-  //      user_id, so it's persisted and doesn't need regenerating on
-  //      every page load
-  //   3. Updates local `efficiency` state immediately so the UI reflects
-  //      the new suggestion without needing a re-fetch
-  //
-  // NOTE: `.upsert(..., { onConflict: 'user_id' })` requires a UNIQUE
-  // constraint on `energy_ai_suggestions.user_id` in Supabase — add one
-  // if it doesn't already exist, or every click will just insert a new
-  // row instead of replacing the old one.
-  //
-  // async function handleRefreshEfficiency() {
-  //   const { data: { user } } = await supabase.auth.getUser()
-  //   if (!user) return
-  //
-  //   setEfficiencyLoading(true)
-  //
-  //   const { data: result, error: fnError } = await supabase.functions.invoke(
-  //     'energy-efficiency',
-  //     { body: { appliances: userAppliances, householdType: profile?.household_type } }
-  //   )
-  //
-  //   if (fnError) {
-  //     console.error('Failed to generate efficiency suggestion:', fnError)
-  //     setEfficiencyLoading(false)
-  //     return
-  //   }
-  //
-  //   // Derive a simple tone tag once, at generation time, so the JSX
-  //   // below never has to recompute it from percentVsAverage.
-  //   const tone = result.percentVsAverage <= 0 ? 'positive' : 'warning'
-  //
-  //   const { error: upsertError } = await supabase
-  //     .from('energy_ai_suggestions')
-  //     .upsert(
-  //       {
-  //         user_id: user.id,
-  //         label: result.rating,
-  //         comparison: result.percentVsAverage,
-  //         tone,
-  //         summary: result.reasoning,
-  //         updated_at: new Date().toISOString(),
-  //       },
-  //       { onConflict: 'user_id' }
-  //     )
-  //
-  //   if (upsertError) {
-  //     console.error('Failed to save efficiency suggestion:', upsertError)
-  //   }
-  //
-  //   setEfficiency({
-  //     rating: result.rating,
-  //     percentVsAverage: result.percentVsAverage,
-  //     tone,
-  //     reasoning: result.reasoning,
-  //     updatedAt: new Date().toISOString(),
-  //   })
-  //   setEfficiencyLoading(false)
-  // }
-  // ============================================================
-
   // Run once on mount. Empty dependency array means this won't re-fire on
   // every re-render — subsequent refreshes only happen via the explicit
   // handleApplianceAdded() call below.
@@ -333,7 +350,9 @@ export default function Appliances() {
   // it successfully inserts a new row into `appliances`. Re-runs the full
   // page load rather than doing a targeted local update, so everything
   // (list, categories, counts) stays guaranteed-consistent with the DB —
-  // at the cost of a few extra round-trips.
+  // at the cost of a few extra round-trips. Note this will NOT trigger an
+  // extra Gemini call unless today's PH-date suggestion doesn't exist yet,
+  // since `fetchStoredEfficiency` still does the same freshness check.
   function handleApplianceAdded() {
     loadAppliancePageData()
   }
@@ -580,13 +599,11 @@ export default function Appliances() {
           </div>
         </div>
 
-        {/* ENERGY EFFICIENCY — now reads from local `efficiency` state,
-            which is populated by fetchStoredEfficiency() (a read of
-            `energy_ai_suggestions`), NOT a live Gemini call. It will stay
-            exactly as-is until a "Refresh" button (not built yet) calls
-            handleRefreshEfficiency() above.
-            TODO: add that button here once ready — e.g. a small refresh
-            icon next to the label that calls handleRefreshEfficiency. */}
+        {/* ENERGY EFFICIENCY — reads from local `efficiency` state, which
+            `fetchStoredEfficiency` populates either straight from the DB
+            (same PH day) or after a fresh Gemini call + upsert (new PH
+            day / first time ever). Only ever regenerates at most once per
+            Philippine calendar day per user. */}
         <div>
           <div className="text-xs text-gray-500 font-medium tracking-wide">ENERGY EFFICIENCY</div>
           <div className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
