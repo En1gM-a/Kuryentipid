@@ -10,6 +10,8 @@ import { useElectricityRate } from '../hooks/useElectricityRate' // custom hook,
 import { Sparkles, Check as CheckIcon } from 'lucide-react'
 import { useBillRecommendations } from '../hooks/useBillRecommendations'
 
+const MIN_APPLIANCES_FOR_AI = 3
+
 export default function BillOptimizer() {
   // Logged-in user's profile row (need provider_id to know which rate to use)
   const [profile, setProfile] = useState(null)
@@ -174,7 +176,7 @@ export default function BillOptimizer() {
     { label: 'Projected', value: projectedBill },
   ]
 
-  const dataReady = !loading && !rateLoading && appliances.length > 0 && ratePerKwh
+  const dataReady = !loading && !rateLoading && appliances.length >= MIN_APPLIANCES_FOR_AI && ratePerKwh
 
   return (
     <div className="px-8 py-10 max-w-7xl mx-auto">
@@ -367,6 +369,16 @@ export default function BillOptimizer() {
       )}
 
       {/* Smart AI Recommendations */}
+      {!loading && !rateLoading && ratePerKwh && appliances.length > 0 && appliances.length < MIN_APPLIANCES_FOR_AI && (
+      <div className="border border-gray-100 rounded-card p-6 shadow-sm mt-6 text-center">
+        <Sparkles size={20} className="text-gray-300 mx-auto mb-2" />
+        <p className="font-semibold text-gray-900 mb-1">Add a few more appliances</p>
+        <p className="text-sm text-gray-500">
+          Track at least {MIN_APPLIANCES_FOR_AI} appliances to unlock personalized AI recommendations
+          ({MIN_APPLIANCES_FOR_AI - appliances.length} more to go).
+        </p>
+      </div>
+      )}
       {dataReady && (
         <div className="border border-gray-100 rounded-card p-6 shadow-sm mt-6">
           <div className="flex items-center justify-between mb-6">
@@ -376,7 +388,7 @@ export default function BillOptimizer() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">
-                {recsRemaining} of {dailyLimit} left today
+                {recsRemaining} of {dailyLimit} left today (Resets at midnight PH time)
               </span>
               <button
                 onClick={generateRecommendations}

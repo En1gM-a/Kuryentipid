@@ -32,6 +32,8 @@ function getPHDateString(date = new Date()) {
   return shifted.toISOString().slice(0, 10) // "YYYY-MM-DD"
 }
 
+const MIN_APPLIANCES_FOR_AI = 3
+
 export default function Appliances() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('ALL CATEGORIES')
@@ -140,6 +142,13 @@ export default function Appliances() {
   // regardless of how many times the user visits this page that day.
   // ============================================================
   async function fetchStoredEfficiency(userId, appliancesForGeneration, householdType) {
+    
+    if (appliancesForGeneration.length < MIN_APPLIANCES_FOR_AI) {
+    setEfficiency(null)
+    setEfficiencyLoading(false)
+    return
+   }
+
     setEfficiencyLoading(true)
 
     const { data, error } = await supabase
@@ -599,29 +608,41 @@ export default function Appliances() {
           </div>
         </div>
 
-        {/* ENERGY EFFICIENCY — reads from local `efficiency` state, which
-            `fetchStoredEfficiency` populates either straight from the DB
-            (same PH day) or after a fresh Gemini call + upsert (new PH
-            day / first time ever). Only ever regenerates at most once per
-            Philippine calendar day per user. */}
-        <div>
-          <div className="text-xs text-gray-500 font-medium tracking-wide">ENERGY EFFICIENCY</div>
-          <div className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
-            {efficiencyLoading ? 'Loading…' : efficiency?.rating || 'N/A'}
-            {efficiency && (
-              <span
-                className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                  efficiency.tone === 'positive'
-                    ? 'text-success bg-green-50'
-                    : 'text-warning bg-orange-50'
-                }`}
-              >
-                {efficiency.percentVsAverage > 0 ? '+' : ''}
-                {efficiency.percentVsAverage}% vs Avg
-              </span>
-            )}
-          </div>
-        </div>
+        {/* ENERGY EFFICIENCY — only computed once the user has tracked at least
+    MIN_APPLIANCES_FOR_AI appliances; below that, a real average-usage
+    comparison isn't meaningful, so we show a nudge instead of calling
+    Gemini or displaying stale/misleading data. */}
+
+<div>
+  <div className="text-xs text-gray-500 font-medium tracking-wide">ENERGY EFFICIENCY</div>
+  {userAppliances.length < MIN_APPLIANCES_FOR_AI ? (
+    <div className="text-sm font-medium text-gray-500 mt-1">
+      Add {MIN_APPLIANCES_FOR_AI - userAppliances.length} more appliance
+      {MIN_APPLIANCES_FOR_AI - userAppliances.length === 1 ? '' : 's'} for an AI insight
+    </div>
+  ) : (
+    <>
+      <div className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+        {efficiencyLoading ? 'Loading…' : efficiency?.rating || 'N/A'}
+        {efficiency && (
+          <span
+            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+              efficiency.tone === 'positive'
+                ? 'text-success bg-green-50'
+                : 'text-warning bg-orange-50'
+            }`}
+          >
+            {efficiency.percentVsAverage > 0 ? '+' : ''}
+            {efficiency.percentVsAverage}% vs Avg
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-gray-400 mt-0.5">
+        Updates daily at 12:00 AM (PH time)
+      </p>
+    </>
+  )}
+</div>
 
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">

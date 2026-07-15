@@ -130,9 +130,9 @@ export default function Dashboard() {
       // --- 3. Monthly bills: actual logged bills, used for the trend chart ---
       const { data: billData, error: billError } = await supabase
         .from('monthly_bills')
-        .select('bill_month, actual_kwh, actual_cost')
+        .select('created_at, actual_kwh, actual_cost')
         .eq('user_id', user.id)
-        .order('bill_month', { ascending: true }) // oldest -> newest, so the chart reads left to right
+        .order('created_at', { ascending: true }) // oldest -> newest, so the chart reads left to right
 
       if (billError) {
         console.error('Failed to load monthly bills:', billError)
