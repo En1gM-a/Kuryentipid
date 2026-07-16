@@ -183,8 +183,8 @@ export default function BillOptimizer() {
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900">Bill Optimizer</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Bill Optimizer</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             Simulate changes to your appliance usage and see real-time impact on your bill.
           </p>
         </div>
@@ -197,7 +197,7 @@ export default function BillOptimizer() {
               className="w-10 h-10 rounded-full object-cover"
             />
             <div>
-              <div className="font-semibold text-gray-900 text-sm">{displayName}</div>
+              <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
               <div className="text-primary text-xs font-medium">{providerName}</div>
             </div>
           </div>
@@ -206,31 +206,31 @@ export default function BillOptimizer() {
 
       {/* Three-way conditional render: loading -> empty state -> missing rate -> actual content */}
       {loading || rateLoading ? (
-        <p className="text-gray-400 text-sm">Loading your appliances…</p>
+        <p className="text-gray-400 dark:text-gray-500 text-sm">Loading your appliances…</p>
         ) : appliances.length === 0 ? (
         // User hasn't added any appliances yet — nothing to optimize
-        <div className="border border-gray-100 rounded-card p-16 text-center shadow-sm">
-            <p className="font-semibold text-gray-900 mb-1">No appliances to optimize yet</p>
-            <p className="text-sm text-gray-500">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-16 text-center shadow-sm">
+            <p className="font-semibold text-gray-900 dark:text-white mb-1">No appliances to optimize yet</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
             Add appliances first from the Appliances page, then come back here to simulate changes.
             </p>
         </div>
         ) : !ratePerKwh ? (
         // Rate lookup failed or provider has no matching rate — can't calculate costs without it
-        <div className="border border-gray-100 rounded-card p-16 text-center shadow-sm">
-            <p className="font-semibold text-gray-900 mb-1">No electricity rate found</p>
-            <p className="text-sm text-gray-500">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-16 text-center shadow-sm">
+            <p className="font-semibold text-gray-900 dark:text-white mb-1">No electricity rate found</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
             We couldn't find a rate for your selected provider. Please check your Profile settings.
             </p>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-6">
           {/* Adjust Daily Usage */}
-          <div className="col-span-2 border border-gray-100 rounded-card p-6 shadow-sm">
+          <div className="col-span-2 border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal size={18} className="text-gray-400" />
-                <h2 className="text-lg font-bold text-gray-900">Adjust Daily Usage</h2>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Adjust Daily Usage</h2>
               </div>
               <button
                 onClick={handleReset}
@@ -242,7 +242,7 @@ export default function BillOptimizer() {
             </div>
 
             {/* One row + slider per appliance, each independently adjustable */}
-            <div className="flex flex-col divide-y divide-gray-100">
+            <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
               {appliances.map((a) => {
                 // Look up icon/colors for this appliance's category (COOLING, KITCHEN, etc.)
                 const style = getCategoryStyle(a.category)
@@ -258,19 +258,19 @@ export default function BillOptimizer() {
                           <Icon size={18} className={style.iconColor} />
                         </div>
                         <div>
-                          <p className="font-semibold text-gray-900">
+                          <p className="font-semibold text-gray-900 dark:text-white">
                             {a.name || 'Unnamed Appliance'}
                           </p>
-                          <p className="text-xs text-gray-400">
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
                             {a.category} • Qty {a.quantity ?? 1}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <span className="text-2xl font-extrabold text-gray-900">
+                        <span className="text-2xl font-extrabold text-gray-900 dark:text-white">
                           {hours.toFixed(1)}
                         </span>
-                        <span className="text-sm text-gray-400 ml-1">hrs/day</span>
+                        <span className="text-sm text-gray-400 dark:text-gray-500 ml-1">hrs/day</span>
                       </div>
                     </div>
 
@@ -284,7 +284,7 @@ export default function BillOptimizer() {
                       onChange={(e) => handleSliderChange(a.id, e.target.value)}
                       className="w-full accent-primary cursor-pointer"
                     />
-                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                    <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1">
                       <span>0h</span>
                       <span>12h</span>
                       <span>24h</span>
@@ -297,7 +297,7 @@ export default function BillOptimizer() {
 
           {/* Results sidebar */}
           <div className="flex flex-col gap-6">
-            <div className="bg-gray-900 rounded-card p-6 text-white">
+            <div className="bg-gray-900 dark:bg-black rounded-card p-6 text-white">
               <p className="text-xs font-semibold text-gray-400 tracking-wide mb-4">
                 OPTIMIZATION RESULTS
               </p>
@@ -346,8 +346,8 @@ export default function BillOptimizer() {
             </div>
 
             {/* Simple 2-bar comparison: Current vs Projected bill */}
-            <div className="border border-gray-100 rounded-card p-6 shadow-sm">
-              <h3 className="font-bold text-gray-900 mb-4">Bill Impact Breakdown</h3>
+            <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
+              <h3 className="font-bold text-gray-900 dark:text-white mb-4">Bill Impact Breakdown</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
@@ -360,7 +360,7 @@ export default function BillOptimizer() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-              <p className="text-xs text-gray-400 mt-2">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                 Based on current kWh rates and simulated usage patterns.
               </p>
             </div>
@@ -370,25 +370,25 @@ export default function BillOptimizer() {
 
       {/* Smart AI Recommendations */}
       {!loading && !rateLoading && ratePerKwh && appliances.length > 0 && appliances.length < MIN_APPLIANCES_FOR_AI && (
-      <div className="border border-gray-100 rounded-card p-6 shadow-sm mt-6 text-center">
-        <Sparkles size={20} className="text-gray-300 mx-auto mb-2" />
-        <p className="font-semibold text-gray-900 mb-1">Add a few more appliances</p>
-        <p className="text-sm text-gray-500">
+      <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm mt-6 text-center">
+        <Sparkles size={20} className="text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+        <p className="font-semibold text-gray-900 dark:text-white mb-1">Add a few more appliances</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Track at least {MIN_APPLIANCES_FOR_AI} appliances to unlock personalized AI recommendations
           ({MIN_APPLIANCES_FOR_AI - appliances.length} more to go).
         </p>
       </div>
       )}
       {dataReady && (
-        <div className="border border-gray-100 rounded-card p-6 shadow-sm mt-6">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm mt-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <Sparkles size={18} className="text-primary" />
-              <h2 className="text-lg font-bold text-gray-900">Smart AI Recommendations</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Smart AI Recommendations</h2>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400">
-                {recsRemaining} of {dailyLimit} left today (Resets at midnight PH time)
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {recsRemaining} of {dailyLimit} left today (Resets at 12AM PHT)
               </span>
               <button
                 onClick={generateRecommendations}
@@ -401,13 +401,13 @@ export default function BillOptimizer() {
           </div>
 
           {recsError && (
-            <p className="text-sm text-danger bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-4">
+            <p className="text-sm text-danger bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-lg px-3 py-2 mb-4">
               {recsError.message || 'Something went wrong getting recommendations.'}
             </p>
           )}
 
           {recommendations.length === 0 && !recsLoading && !recsError && (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-400 dark:text-gray-500">
               Click "Get AI Recommendations" for personalized ways to lower your bill.
             </p>
           )}
@@ -416,25 +416,25 @@ export default function BillOptimizer() {
             {recommendations.map((rec, index) => {
               const isAccepted = acceptedRecIds.has(index)
               return (
-                <div key={index} className="border border-gray-100 rounded-card p-5">
+                <div key={index} className="border border-gray-100 dark:border-gray-800 rounded-card p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-success bg-green-50 px-2.5 py-1 rounded-full uppercase">
+                    <span className="text-xs font-semibold text-success bg-green-50 dark:bg-green-500/10 px-2.5 py-1 rounded-full uppercase">
                       {rec.difficulty}
                     </span>
                   </div>
-                  <p className="font-bold text-gray-900 mb-1">{rec.title}</p>
-                  <p className="text-sm text-gray-500 mb-4">{rec.description}</p>
+                  <p className="font-bold text-gray-900 dark:text-white mb-1">{rec.title}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{rec.description}</p>
                   <div className="flex items-center justify-between">
                     <span className="text-success font-bold">
                       ₱{Number(rec.estimated_monthly_savings).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      <span className="text-xs text-gray-400 font-normal">/mo</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">/mo</span>
                     </span>
                     <button
                       onClick={() => handleAcceptRecommendation(rec, index)}
                       disabled={isAccepted}
                       className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition ${
                         isAccepted
-                          ? 'bg-green-50 text-success cursor-default'
+                          ? 'bg-green-50 dark:bg-green-500/10 text-success cursor-default'
                           : 'bg-primary text-white hover:bg-blue-700'
                       }`}
                     >

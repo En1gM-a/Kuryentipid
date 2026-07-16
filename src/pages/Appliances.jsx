@@ -400,8 +400,8 @@ export default function Appliances() {
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900">Appliance Management</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Appliance Management</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             Manage and track the energy consumption of your individual devices.
           </p>
         </div>
@@ -415,7 +415,7 @@ export default function Appliances() {
             className="w-10 h-10 rounded-full object-cover"
           />
           <div>
-            <div className="font-semibold text-gray-900 text-sm">{displayName}</div>
+            <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
             <div className="text-primary text-xs font-medium">{providerName}</div>
           </div>
         </div>
@@ -432,7 +432,7 @@ export default function Appliances() {
             placeholder="Search appliance..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition text-sm"
           />
         </div>
 
@@ -443,7 +443,7 @@ export default function Appliances() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="appearance-none pl-4 pr-9 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:ring-2 focus:ring-primary/30 outline-none cursor-pointer"
+            className="appearance-none pl-4 pr-9 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-primary/30 outline-none cursor-pointer"
           >
             {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
@@ -462,31 +462,31 @@ export default function Appliances() {
       </div>
 
       {/* Table */}
-      <div className="border border-gray-100 rounded-card overflow-hidden shadow-sm">
+      <div className="border border-gray-100 dark:border-gray-800 rounded-card overflow-hidden shadow-sm bg-white dark:bg-gray-900">
         {filteredUserAppliances.length > 0 ? (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
+            <thead className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
               <tr>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500">Appliance</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500">Category</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500">Wattage</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500">Hours / Day</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Use</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500">Monthly Cost</th>
-                <th className="px-6 py-4 text-right font-semibold text-gray-500">Actions</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Appliance</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Category</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Wattage</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Hours / Day</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Monthly Use</th>
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Monthly Cost</th>
+                <th className="px-6 py-4 text-right font-semibold text-gray-500 dark:text-gray-400">Actions</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filteredUserAppliances.map((appliance) => {
                 const wattage = Number(appliance.wattage || 0)
                 const hoursPerDay = Number(appliance.hours_per_day || 0)
                 const monthlyKwh = ((wattage * hoursPerDay * 30) / 1000).toFixed(1)
 
                 return (
-                  <tr key={appliance.id} className="hover:bg-gray-50 transition">
+                  <tr key={appliance.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900">
+                      <div className="font-semibold text-gray-900 dark:text-white">
                         {appliance.name || appliance.model_name || 'Unnamed Appliance'}
                       </div>
                     </td>
@@ -496,7 +496,7 @@ export default function Appliances() {
                         const style = getCategoryStyle(appliance.category)
                         const Icon = style.icon
                         return (
-                          <div className="flex items-center gap-2 text-gray-700">
+                          <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                             <Icon size={16} className={style.iconColor} />
                             <span className="font-semibold">{appliance.category || 'Uncategorized'}</span>
                           </div>
@@ -504,19 +504,19 @@ export default function Appliances() {
                       })()}
                     </td>
 
-                    <td className="px-6 py-4 font-semibold text-gray-900">
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
                       {wattage.toLocaleString()} W
                     </td>
 
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
                       {hoursPerDay} hrs
                     </td>
 
-                    <td className="px-6 py-4 font-semibold text-gray-900">
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
                       {monthlyKwh} kWh
                     </td>
 
-                    <td className="px-6 py-4 font-semibold text-gray-900">
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
                       {ratePerKwh
                         ? `₱${calculateMonthlyCost(appliance, ratePerKwh).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                         : rateLoading ? '…' : 'N/A'}
@@ -526,13 +526,13 @@ export default function Appliances() {
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => handleOpenEditModal(appliance)}
-                          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50"
+                          className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
                         >
                           <Pencil size={15} />
                         </button>
                         <button
                           onClick={() => handleDeleteAppliance(appliance.id)}
-                          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-danger hover:bg-red-50"
+                          className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-danger hover:bg-red-50 dark:hover:bg-red-500/10"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -545,15 +545,15 @@ export default function Appliances() {
           </table>
         ) : (
           <div className="flex flex-col items-center justify-center text-center py-16">
-            <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-              <Plug size={24} className="text-gray-300" />
+            <div className="w-14 h-14 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center mb-4">
+              <Plug size={24} className="text-gray-300 dark:text-gray-600" />
             </div>
 
-            <p className="font-semibold text-gray-900 mb-1">
+            <p className="font-semibold text-gray-900 dark:text-white mb-1">
               {userAppliances.length === 0 ? 'No appliances yet' : 'No matching appliances'}
             </p>
 
-            <p className="text-sm text-gray-500 max-w-xs mb-5">
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mb-5">
               {userAppliances.length === 0
                 ? 'Add your first appliance to start tracking your electricity usage.'
                 : 'Try a different search term or category.'}
@@ -580,30 +580,30 @@ export default function Appliances() {
           `.range()` on the Supabase query (or client-side slicing) once
           the catalog grows large enough to need real pagination. */}
       <div className="flex items-center justify-between mt-5">
-        <p className="text-sm text-gray-500">
-          Showing <span className="font-semibold text-gray-900">{filteredUserAppliances.length}</span> of{' '}
-          <span className="font-semibold text-gray-900">{userAppliances.length}</span> appliances
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Showing <span className="font-semibold text-gray-900 dark:text-white">{filteredUserAppliances.length}</span> of{' '}
+          <span className="font-semibold text-gray-900 dark:text-white">{userAppliances.length}</span> appliances
         </p>
         <div className="flex gap-2">
-          <button className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-400 cursor-not-allowed">
+          <button className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-400 dark:text-gray-600 cursor-not-allowed">
             Previous
           </button>
-          <button className="px-4 py-2 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+          <button className="px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
             Next
           </button>
         </div>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-6 mt-10 pt-8 border-t border-gray-100">
+      <div className="grid grid-cols-3 gap-6 mt-10 pt-8 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
             <Zap size={18} className="text-primary" />
           </div>
           <div>
-            <div className="text-xs text-gray-500 font-medium tracking-wide">ACTIVE LOAD</div>
-            <div className="text-lg font-extrabold text-gray-900">
-              {totalWattage.toLocaleString()} <span className="text-sm font-medium text-gray-500">TOTAL WATTS</span>
+            <div className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-wide">ACTIVE LOAD</div>
+            <div className="text-lg font-extrabold text-gray-900 dark:text-white">
+              {totalWattage.toLocaleString()} <span className="text-sm font-medium text-gray-500 dark:text-gray-400">TOTAL WATTS</span>
             </div>
           </div>
         </div>
@@ -614,22 +614,22 @@ export default function Appliances() {
     Gemini or displaying stale/misleading data. */}
 
 <div>
-  <div className="text-xs text-gray-500 font-medium tracking-wide">ENERGY EFFICIENCY</div>
+  <div className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-wide">ENERGY EFFICIENCY</div>
   {userAppliances.length < MIN_APPLIANCES_FOR_AI ? (
-    <div className="text-sm font-medium text-gray-500 mt-1">
+    <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">
       Add {MIN_APPLIANCES_FOR_AI - userAppliances.length} more appliance
       {MIN_APPLIANCES_FOR_AI - userAppliances.length === 1 ? '' : 's'} for an AI insight
     </div>
   ) : (
     <>
-      <div className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+      <div className="text-lg font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
         {efficiencyLoading ? 'Loading…' : efficiency?.rating || 'N/A'}
         {efficiency && (
           <span
             className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
               efficiency.tone === 'positive'
-                ? 'text-success bg-green-50'
-                : 'text-warning bg-orange-50'
+                ? 'text-success bg-green-50 dark:bg-green-500/10'
+                : 'text-warning bg-orange-50 dark:bg-orange-500/10'
             }`}
           >
             {efficiency.percentVsAverage > 0 ? '+' : ''}
@@ -637,7 +637,7 @@ export default function Appliances() {
           </span>
         )}
       </div>
-      <p className="text-[11px] text-gray-400 mt-0.5">
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
         Updates daily at 12:00 AM (PH time)
       </p>
     </>
@@ -645,12 +645,12 @@ export default function Appliances() {
 </div>
 
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center">
             <TriangleAlert size={18} className="text-warning" />
           </div>
           <div>
-            <div className="text-xs text-gray-500 font-medium tracking-wide">EST. MONTHLY COST</div>
-            <div className="text-lg font-extrabold text-gray-900">
+            <div className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-wide">EST. MONTHLY COST</div>
+            <div className="text-lg font-extrabold text-gray-900 dark:text-white">
               {totalMonthlyCost !== null
                 ? `₱${totalMonthlyCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                 : rateLoading ? 'Loading…' : 'N/A'}
@@ -692,20 +692,20 @@ export default function Appliances() {
           removes the row from local state directly — no re-fetch needed. */}
       {pendingDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center shrink-0">
                 <Trash2 size={18} className="text-danger" />
               </div>
-              <h3 className="font-bold text-gray-900 text-lg">Delete appliance?</h3>
+              <h3 className="font-bold text-gray-900 dark:text-white text-lg">Delete appliance?</h3>
             </div>
-            <p className="text-sm text-gray-500 mb-5">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
               This will permanently remove this appliance from your list. This action can't be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={cancelDelete}
-                className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
               >
                 Cancel
               </button>

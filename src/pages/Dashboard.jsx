@@ -230,13 +230,13 @@ export default function Dashboard() {
       {/* Header: greeting + user avatar/provider name */}
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900">Dashboard Overview</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Dashboard Overview</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             Welcome back, {firstName}! Here's your energy summary for this month.
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <button className="relative w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition">
+          <button className="relative w-10 h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
             <Bell size={18} />
             <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-danger" />
           </button>
@@ -249,7 +249,7 @@ export default function Dashboard() {
               className="w-10 h-10 rounded-full object-cover"
             />
             <div>
-              <div className="font-semibold text-gray-900 text-sm">{displayName}</div>
+              <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
               <div className="text-primary text-xs font-medium">
                 {loadingProfile ? '' : providerName}
               </div>
@@ -261,71 +261,71 @@ export default function Dashboard() {
       {/* KPI cards row — the 4 summary numbers at the top of the dashboard */}
       <div className="grid grid-cols-4 gap-5 mb-6">
         {/* Card 1: Estimated Monthly Bill (real bill if logged, else computed estimate) */}
-        <div className="border border-gray-100 rounded-card p-6 shadow-sm">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
               <Receipt size={18} className="text-primary" />
             </div>
             {hasAppliances && (
-              <span className="text-xs font-semibold text-primary bg-blue-50 px-2.5 py-1 rounded-full">
+              <span className="text-xs font-semibold text-primary bg-blue-50 dark:bg-blue-500/10 px-2.5 py-1 rounded-full">
                 ESTIMATED
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 mb-1">Estimated Monthly Bill</p>
-          <p className="text-3xl font-extrabold text-gray-900">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Estimated Monthly Bill</p>
+          <p className="text-3xl font-extrabold text-gray-900 dark:text-white">
             {loading ? '...' : estimatedBill}
           </p>
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
             {hasAppliances ? 'Based on your appliances' : 'No calculations yet'}
           </p>
         </div>
 
         {/* Card 2: Total Monthly kWh (same source logic as the bill above) */}
-        <div className="border border-gray-100 rounded-card p-6 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center mb-4">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center mb-4">
             <Home size={18} className="text-purple-400" />
           </div>
-          <p className="text-sm text-gray-500 mb-1">Total Monthly kWh</p>
-          <p className="text-3xl font-extrabold text-gray-900">
-            {loading ? '...' : totalKwh} <span className="text-base font-medium text-gray-400">kWh</span>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total Monthly kWh</p>
+          <p className="text-3xl font-extrabold text-gray-900 dark:text-white">
+            {loading ? '...' : totalKwh} <span className="text-base font-medium text-gray-400 dark:text-gray-500">kWh</span>
           </p>
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
             {hasAppliances ? 'Estimated from usage' : 'No data yet'}
           </p>
         </div>
 
         {/* Card 3: how many appliances the user has added (simple count) */}
-        <div className="border border-gray-100 rounded-card p-6 shadow-sm">
-          <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center mb-4">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-500/10 flex items-center justify-center mb-4">
             <Home size={18} className="text-orange-500" />
           </div>
-          <p className="text-sm text-gray-500 mb-1">Number of Appliances</p>
-          <p className="text-3xl font-extrabold text-gray-900">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Number of Appliances</p>
+          <p className="text-3xl font-extrabold text-gray-900 dark:text-white">
             {loading ? '...' : applianceCount}
           </p>
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
             {hasAppliances ? 'Synced from your account' : 'Add your first appliance'}
           </p>
         </div>
 
         {/* Card 4: Potential Savings — see the ⚠️ placeholder note above */}
-        <div className="border border-gray-100 rounded-card p-6 shadow-sm">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-500/10 flex items-center justify-center">
               <PiggyBank size={18} className="text-success" />
             </div>
             {hasAppliances && (
-              <span className="text-xs font-semibold text-success bg-green-50 px-2.5 py-1 rounded-full">
+              <span className="text-xs font-semibold text-success bg-green-50 dark:bg-green-500/10 px-2.5 py-1 rounded-full">
                 POTENTIAL
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 mb-1">Potential Savings</p>
-          <p className="text-3xl font-extrabold text-gray-900">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Potential Savings</p>
+          <p className="text-3xl font-extrabold text-gray-900 dark:text-white">
             {loading ? '...' : potentialSavings}
           </p>
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
             {hasAppliances ? 'Try "ECO" mode settings' : 'N/A'}
           </p>
         </div>
@@ -338,11 +338,11 @@ export default function Dashboard() {
           <Plus size={18} />
           Add Appliance
         </button>
-        <button className="flex items-center gap-2 border border-gray-200 font-semibold text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-50 transition">
+        <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-300 px-5 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition">
           <RotateCw size={16} />
           Recalculate
         </button>
-        <button className="flex items-center gap-2 border border-gray-200 font-semibold text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-50 transition">
+        <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-300 px-5 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition">
           <SlidersHorizontal size={16} />
           Optimize Bill
         </button>
@@ -352,19 +352,19 @@ export default function Dashboard() {
           + top energy consumers list (right, 1/3 width) */}
       <div className="grid grid-cols-3 gap-6">
         {/* Usage trend chart, built from monthly_bills rows */}
-        <div className="col-span-2 border border-gray-100 rounded-card p-6 shadow-sm">
+        <div className="col-span-2 border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-gray-900">Energy Usage Trend</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Energy Usage Trend</h2>
             {/* Daily/Weekly/Monthly toggle — currently just changes which
                 button looks "active"; doesn't actually re-query or filter
                 data yet (see `range` state comment above). */}
-            <div className="flex bg-gray-50 rounded-xl p-1">
+            <div className="flex bg-gray-50 dark:bg-gray-800 rounded-xl p-1">
               {['Daily', 'Weekly', 'Monthly'].map((r) => (
                 <button
                   key={r}
                   onClick={() => setRange(r)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
-                    range === r ? 'bg-primary text-white shadow-sm' : 'text-gray-500'
+                    range === r ? 'bg-primary text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
                   {r}
@@ -385,11 +385,11 @@ export default function Dashboard() {
           ) : (
             // Empty state: shown until the user logs at least one monthly_bills row
             <div className="h-[280px] flex flex-col items-center justify-center text-center">
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-4">
                 <Receipt size={24} className="text-primary" />
               </div>
-              <p className="font-semibold text-gray-900 mb-1">No usage data yet</p>
-              <p className="text-sm text-gray-500 max-w-xs">
+              <p className="font-semibold text-gray-900 dark:text-white mb-1">No usage data yet</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
                 Log a monthly bill to start seeing your usage trend here.
               </p>
             </div>
@@ -397,24 +397,24 @@ export default function Dashboard() {
         </div>
 
         {/* Top 4 most expensive appliances (by estimated monthly cost) */}
-        <div className="border border-gray-100 rounded-card p-6 shadow-sm">
+        <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-gray-900">Top Energy Consumers</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Top Energy Consumers</h2>
           </div>
 
           {hasAppliances ? (
             <div className="flex flex-col gap-4">
               {topConsumers.map((a) => (
                 <div key={a.id} className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center shrink-0">
                     <Calculator size={16} className="text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">{a.name}</p>
-                    <p className="text-xs text-gray-400">{a.category}</p>
+                    <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{a.name}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{a.category}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-bold text-gray-900 text-sm">
+                    <p className="font-bold text-gray-900 dark:text-white text-sm">
                       ₱{a.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
                   </div>
@@ -424,11 +424,11 @@ export default function Dashboard() {
           ) : (
             // Empty state: shown until the user adds at least one appliance
             <div className="flex flex-col items-center justify-center text-center py-10">
-              <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-3">
-                <Calculator size={20} className="text-gray-300" />
+              <div className="w-12 h-12 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center mb-3">
+                <Calculator size={20} className="text-gray-300 dark:text-gray-600" />
               </div>
-              <p className="font-semibold text-gray-900 text-sm mb-1">No appliances yet</p>
-              <p className="text-xs text-gray-500">Add appliances to see top consumers here.</p>
+              <p className="font-semibold text-gray-900 dark:text-white text-sm mb-1">No appliances yet</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Add appliances to see top consumers here.</p>
             </div>
           )}
         </div>
@@ -437,9 +437,9 @@ export default function Dashboard() {
       {/* Bottom section: quick preview of appliances (first 4 only).
           Full CRUD management happens on the separate Appliances page —
           this is just a dashboard-level glance. */}
-      <div className="border border-gray-100 rounded-card p-6 shadow-sm mt-6">
+      <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm mt-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900">All Appliances</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">All Appliances</h2>
           {hasAppliances && (
             <button className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
               Manage All Appliances <ChevronRight size={16} />
@@ -454,12 +454,12 @@ export default function Dashboard() {
                 the Supabase query. */}
             {applianceList.slice(0, 4).map((a) => (
               <div key={a.id} className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0">
                   <Snowflake size={18} className="text-primary" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900 text-sm">{a.name}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm">{a.name}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
                     ₱{applianceCost(a).toLocaleString(undefined, { maximumFractionDigits: 0 })} / month
                   </p>
                 </div>
@@ -469,11 +469,11 @@ export default function Dashboard() {
         ) : (
           // Empty state: shown until the user adds at least one appliance
           <div className="flex flex-col items-center justify-center text-center py-10">
-            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-3">
-              <RefrigeratorIcon size={20} className="text-gray-300" />
+            <div className="w-12 h-12 rounded-2xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center mb-3">
+              <RefrigeratorIcon size={20} className="text-gray-300 dark:text-gray-600" />
             </div>
-            <p className="font-semibold text-gray-900 text-sm mb-1">No appliances added yet</p>
-            <p className="text-xs text-gray-500 mb-4">
+            <p className="font-semibold text-gray-900 dark:text-white text-sm mb-1">No appliances added yet</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               Add appliances to see which ones consume the most energy.
             </p>
             <button className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-blue-700 transition">
