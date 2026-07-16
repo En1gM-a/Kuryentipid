@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Appliances from './pages/Appliances'
 import BillOptimizer from './pages/BillOptimizer'
 import Profile from './pages/Profile'
+import MonthlyHistory from './pages/MonthlyHistory'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/appliances" element={<Appliances />} />
           <Route path="/optimizer" element={<BillOptimizer />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/history" element={<MonthlyHistory />} />
           {/* MORE PAGES... /dashboard, /optimizer, /history, /profile, /settings */}
         </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
