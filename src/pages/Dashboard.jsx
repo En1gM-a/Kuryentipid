@@ -18,12 +18,6 @@ import { supabase } from '../lib/supabaseClient'
 const FALLBACK_RATE_PER_KWH = 11.5 // ₱ per kWh
 
 export default function Dashboard() {
-  // Controls which time range button is highlighted in "Energy Usage Trend".
-  // NOTE: this doesn't currently re-fetch or re-filter data — it's just UI
-  // state for now. If we want Daily/Weekly/Monthly to actually change the
-  // chart, we'll need to filter `monthlyBills` (or query Supabase again)
-  // based on this value.
-  const [range, setRange] = useState('Weekly')
 
   // --- Data straight from Supabase, loaded in the useEffect below ---
   const [profile, setProfile] = useState(null)               // row from `profiles` table
@@ -167,7 +161,7 @@ export default function Dashboard() {
     (a.wattage * a.quantity * a.hours_per_day * 30) / 1000
 
   const hasAppliances = applianceList.length > 0
-  const hasTrendData = monthlyBills.length > 0
+  const hasTrendData = monthlyBills.length > 1
   // Single "is anything still loading" flag so the UI can show placeholders
   // instead of flashing 0/₱0 before real data arrives.
   const loading = loadingProfile || loadingAppliances || loadingBills || loadingRate
@@ -213,10 +207,13 @@ export default function Dashboard() {
     .sort((a, b) => b.cost - a.cost)
     .slice(0, 4)
 
-  // Reshape monthly_bills rows into the {date, usage} format Recharts expects.
+  // Reshape monthly_bills rows into the {date, usage} format Recharts
+  // expects. Each point represents one real logged month — this is a
+  // month-over-month trend, not daily/weekly, since there's no daily
+  // usage snapshot table (see note on the chart heading below).
   const usageTrend = monthlyBills.map((b) => ({
-    date: b.bill_month,
-    usage: b.actual_kwh,
+    date: new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+    usage: Number(b.actual_kwh),
   }))
 
   // Friendly display name. Provider name + rate now come straight from the
@@ -334,15 +331,13 @@ export default function Dashboard() {
       {/* Quick action buttons — none of these are wired up to real
           behavior yet (no onClick handlers). Placeholder UI for now. */}
       <div className="flex items-center gap-3 mb-6">
-        <button className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-3 rounded-xl shadow-sm hover:bg-blue-700 transition">
+        <button onClick={() => window.location.href = '/appliances'}
+        className="flex items-center gap-2 bg-primary text-white font-semibold px-5 py-3 rounded-xl shadow-sm hover:bg-blue-700 transition">
           <Plus size={18} />
           Add Appliance
         </button>
-        <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-300 px-5 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-          <RotateCw size={16} />
-          Recalculate
-        </button>
-        <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-300 px-5 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+        <button onClick={() => window.location.href = '/optimizer'}
+        className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 font-semibold text-gray-700 dark:text-gray-300 px-5 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition">
           <SlidersHorizontal size={16} />
           Optimize Bill
         </button>
@@ -354,22 +349,11 @@ export default function Dashboard() {
         {/* Usage trend chart, built from monthly_bills rows */}
         <div className="col-span-2 border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Energy Usage Trend</h2>
-            {/* Daily/Weekly/Monthly toggle — currently just changes which
-                button looks "active"; doesn't actually re-query or filter
-                data yet (see `range` state comment above). */}
-            <div className="flex bg-gray-50 dark:bg-gray-800 rounded-xl p-1">
-              {['Daily', 'Weekly', 'Monthly'].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
-                    range === r ? 'bg-primary text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Monthly Usage Trend</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                Based on your logged monthly bills
+              </p>
             </div>
           </div>
 
