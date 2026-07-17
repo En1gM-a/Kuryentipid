@@ -22,8 +22,8 @@ import 'leaflet/dist/leaflet.css'
 //   npm install react-leaflet leaflet
 // ============================================================
 
-const API_URL = (month, year) =>
-  `/presyo-api/national?month=${month}&year=${year}`
+    const API_URL = (month, year) =>
+  `https://bujqqyzclohzwoyqzidk.supabase.co/functions/v1/presyo-proxy?month=${month}&year=${year}`
 
 // Center roughly over the PH archipelago
 const PH_CENTER = [12.8797, 121.774]
