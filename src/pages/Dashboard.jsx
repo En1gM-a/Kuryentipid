@@ -17,7 +17,65 @@ import { supabase } from '../lib/supabaseClient'
 // ============================================================
 const FALLBACK_RATE_PER_KWH = 11.5 // ₱ per kWh
 
+// Groups daily monthly_bills rows into week or month buckets by summing
+// actual_kwh/actual_cost. "Week" here is a rolling 7-day bucket anchored
+// to the Monday of each row's date — NOT reset at the 1st of the month —
+// so months don't leave awkward leftover days.
+function getMondayOf(date) {
+  const d = new Date(date)
+  const day = d.getDay() // 0 = Sunday
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function bucketByRange(rows, range) {
+  if (range === 'Daily') {
+    return rows.map((r) => ({
+      key: r.created_at,
+      label: new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      kwh: Number(r.actual_kwh),
+      cost: Number(r.actual_cost),
+    }))
+  }
+
+  const buckets = new Map()
+
+  rows.forEach((r) => {
+    const date = new Date(r.created_at)
+    const bucketKey =
+      range === 'Weekly'
+        ? getMondayOf(date).toISOString().slice(0, 10)
+        : `${date.getFullYear()}-${date.getMonth()}`
+
+    if (!buckets.has(bucketKey)) {
+      buckets.set(bucketKey, { key: bucketKey, date, kwh: 0, cost: 0, latestDate: r.created_at })
+    }
+    const bucket = buckets.get(bucketKey)
+    if (r.created_at >= bucket.latestDate) {
+      bucket.kwh = Number(r.actual_kwh)
+      bucket.cost = Number(r.actual_cost)
+      bucket.latestDate = r.created_at
+    }
+  })
+
+  return Array.from(buckets.values())
+    .sort((a, b) => a.date - b.date)
+    .map((b) => ({
+      key: b.key,
+      label:
+        range === 'Weekly'
+          ? `Week of ${b.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+          : b.date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      kwh: b.kwh,
+      cost: b.cost,
+    }))
+}
+
 export default function Dashboard() {
+
+  const [range, setRange] = useState('Weekly') // 'Daily' | 'Weekly' | 'Monthly'
 
   // --- Data straight from Supabase, loaded in the useEffect below ---
   const [profile, setProfile] = useState(null)               // row from `profiles` table
@@ -161,7 +219,7 @@ export default function Dashboard() {
     (a.wattage * a.quantity * a.hours_per_day * 30) / 1000
 
   const hasAppliances = applianceList.length > 0
-  const hasTrendData = monthlyBills.length > 1
+  const hasTrendData = monthlyBills.length > 0
   // Single "is anything still loading" flag so the UI can show placeholders
   // instead of flashing 0/₱0 before real data arrives.
   const loading = loadingProfile || loadingAppliances || loadingBills || loadingRate
@@ -189,8 +247,6 @@ export default function Dashboard() {
 
   const applianceCount = applianceList.length
 
-  
-
   // ⚠️ PLACEHOLDER LOGIC — not a real savings calculation yet.
   // Currently just assumes "12% of your total estimated cost" as a generic
   // number so the card isn't empty. Replace this once we design real
@@ -207,13 +263,11 @@ export default function Dashboard() {
     .sort((a, b) => b.cost - a.cost)
     .slice(0, 4)
 
-  // Reshape monthly_bills rows into the {date, usage} format Recharts
-  // expects. Each point represents one real logged month — this is a
-  // month-over-month trend, not daily/weekly, since there's no daily
-  // usage snapshot table (see note on the chart heading below).
-  const usageTrend = monthlyBills.map((b) => ({
-    date: new Date(b.created_at).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-    usage: Number(b.actual_kwh),
+  // monthly_bills now gets a new row every day so this is real daily data 
+  // — bucketByRange sums it into day/week/month views depending on the toggle.
+  const usageTrend = bucketByRange(monthlyBills, range).map((b) => ({
+    date: b.label,
+    usage: b.kwh,
   }))
 
   // Friendly display name. Provider name + rate now come straight from the
@@ -349,11 +403,19 @@ export default function Dashboard() {
         {/* Usage trend chart, built from monthly_bills rows */}
         <div className="col-span-2 border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Monthly Usage Trend</h2>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                Based on your logged monthly bills
-              </p>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Energy Usage Trend</h2>
+            <div className="flex bg-gray-50 dark:bg-gray-800 rounded-xl p-1">
+              {['Daily', 'Weekly', 'Monthly'].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRange(r)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                    range === r ? 'bg-primary text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
             </div>
           </div>
 

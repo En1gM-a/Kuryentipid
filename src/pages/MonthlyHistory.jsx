@@ -17,9 +17,56 @@ const SORT_OPTIONS = [
   { value: 'most_savings', label: 'Most Savings' },
 ]
 
+// ============================================================
+// monthly_bills now gets a NEW ROW EVERY DAY rather than one row per calendar month. 
+// So before this page can show "one row per month" like the design calls for, we first have
+// to group all the daily rows by calendar month and sum their kwh/cost.
+//
+// `dayCount` (how many daily snapshots fed into this month) is kept
+// around for transparency — a month with only 3 days logged so far
+// isn't really comparable to a month with a full 30, even though both
+// just show as "one row" in the table.
+// ============================================================
+function groupByMonth(dailyRows) {
+  const buckets = new Map()
+
+  dailyRows.forEach((row) => {
+    const date = new Date(row.created_at)
+    const key = `${date.getFullYear()}-${date.getMonth()}`
+
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        id: key,
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        actual_kwh: 0,
+        actual_cost: 0,
+        dayCount: 0,
+        created_at: row.created_at, // will end up as the last row's date per month, fine for sorting
+      })
+    }
+
+    const bucket = buckets.get(key)
+    if (new Date(row.created_at) >= new Date(bucket.created_at)) {
+      bucket.actual_kwh = Number(row.actual_kwh)
+      bucket.actual_cost = Number(row.actual_cost)
+    }
+    bucket.dayCount += 1
+    // Keep created_at as the latest timestamp seen in this month, so
+    // "most recent month" detection further down stays accurate.
+    if (new Date(row.created_at) > new Date(bucket.created_at)) {
+      bucket.created_at = row.created_at
+    }
+  })
+
+  return Array.from(buckets.values()).sort(
+    (a, b) => new Date(a.created_at) - new Date(b.created_at)
+  )
+}
+
 export default function MonthlyHistory() {
   const [profile, setProfile] = useState(null)
-  const [bills, setBills] = useState([])
+  const [dailyRows, setDailyRows] = useState([])
   const [appliances, setAppliances] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -57,7 +104,7 @@ export default function MonthlyHistory() {
       if (billError) {
         console.error('Failed to load monthly bills:', billError)
       } else {
-        setBills(billData || [])
+        setDailyRows(billData || [])
       }
 
       const { data: applianceData, error: applianceError } = await supabase
@@ -77,99 +124,89 @@ export default function MonthlyHistory() {
     load()
   }, [])
 
-  // ============================================================
-  // Enrich each bill with derived fields that don't exist as real
-  // columns: savingsVsPrevious (this row's cost minus the previous row's
-  // cost, computed against the ascending-sorted list so it's always
-  // comparing to the actual prior calendar entry) and status ("Current"
-  // for the most recent row, "Archived" for every other one — there's no
-  // `status` column in the DB, this is fully computed).
-  //
-  // `applianceCount` is NOT historical — there's no per-month appliance
-  // snapshot in the schema, so this uses the CURRENT total appliance
-  // count for every row as an approximation. Flagged in the table via a
-  // tooltip-style title attribute.
-  // ============================================================
-  const enrichedBills = useMemo(() => {
-    const ascending = [...bills].sort(
-      (a, b) => new Date(a.created_at) - new Date(b.created_at)
-    )
+  // Step 1: collapse daily rows into monthly totals.
+  const monthlyBuckets = useMemo(() => groupByMonth(dailyRows), [dailyRows])
 
-    const mostRecentId = ascending.length > 0 ? ascending[ascending.length - 1].id : null
+  // Step 2: enrich each MONTH (not each day) with savingsVsPrevious and
+  // status, same as before — just operating one level up now.
+  const enrichedMonths = useMemo(() => {
+    const mostRecentId = monthlyBuckets.length > 0
+      ? monthlyBuckets[monthlyBuckets.length - 1].id
+      : null
 
-    return ascending.map((bill, index) => {
-      const previous = index > 0 ? ascending[index - 1] : null
+    return monthlyBuckets.map((bucket, index) => {
+      const previous = index > 0 ? monthlyBuckets[index - 1] : null
       const savingsVsPrevious = previous
-        ? Number(previous.actual_cost) - Number(bill.actual_cost)
+        ? previous.actual_cost - bucket.actual_cost
         : null
 
+      const monthLabel = new Date(bucket.year, bucket.month, 1).toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      })
+
       return {
-        ...bill,
-        monthLabel: new Date(bill.created_at).toLocaleDateString('en-US', {
-          month: 'long',
-          year: 'numeric',
-        }),
+        ...bucket,
+        monthLabel,
         savingsVsPrevious,
-        status: bill.id === mostRecentId ? 'Current' : 'Archived',
-        applianceCount: appliances.length, // approximation — see note above
+        status: bucket.id === mostRecentId ? 'Current' : 'Archived',
+        applianceCount: appliances.length, // still an approximation — see MonthlyReportModal note
       }
     })
-  }, [bills, appliances])
+  }, [monthlyBuckets, appliances])
 
   const availableYears = useMemo(() => {
-    const years = new Set(enrichedBills.map((b) => new Date(b.created_at).getFullYear()))
+    const years = new Set(enrichedMonths.map((b) => b.year))
     return Array.from(years).sort((a, b) => b - a)
-  }, [enrichedBills])
+  }, [enrichedMonths])
 
-  const filteredBills = useMemo(() => {
-    return enrichedBills.filter((b) => {
+  const filteredMonths = useMemo(() => {
+    return enrichedMonths.filter((b) => {
       const matchesSearch = b.monthLabel.toLowerCase().includes(search.toLowerCase())
-      const matchesYear =
-        yearFilter === 'ALL' || new Date(b.created_at).getFullYear() === Number(yearFilter)
+      const matchesYear = yearFilter === 'ALL' || b.year === Number(yearFilter)
 
-      const billDate = new Date(b.created_at)
-      const matchesFrom = !dateFrom || billDate >= new Date(dateFrom)
-      const matchesTo = !dateTo || billDate <= new Date(dateTo)
+      const monthDate = new Date(b.year, b.month, 1)
+      const matchesFrom = !dateFrom || monthDate >= new Date(dateFrom)
+      const matchesTo = !dateTo || monthDate <= new Date(dateTo)
 
       return matchesSearch && matchesYear && matchesFrom && matchesTo
     })
-  }, [enrichedBills, search, yearFilter, dateFrom, dateTo])
+  }, [enrichedMonths, search, yearFilter, dateFrom, dateTo])
 
-  const sortedBills = useMemo(() => {
-    const list = [...filteredBills]
+  const sortedMonths = useMemo(() => {
+    const list = [...filteredMonths]
     switch (sortBy) {
       case 'oldest':
-        return list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        return list.sort((a, b) => new Date(a.year, a.month) - new Date(b.year, b.month))
       case 'highest_bill':
-        return list.sort((a, b) => Number(b.actual_cost) - Number(a.actual_cost))
+        return list.sort((a, b) => b.actual_cost - a.actual_cost)
       case 'lowest_bill':
-        return list.sort((a, b) => Number(a.actual_cost) - Number(b.actual_cost))
+        return list.sort((a, b) => a.actual_cost - b.actual_cost)
       case 'highest_consumption':
-        return list.sort((a, b) => Number(b.actual_kwh) - Number(a.actual_kwh))
+        return list.sort((a, b) => b.actual_kwh - a.actual_kwh)
       case 'lowest_consumption':
-        return list.sort((a, b) => Number(a.actual_kwh) - Number(b.actual_kwh))
+        return list.sort((a, b) => a.actual_kwh - b.actual_kwh)
       case 'most_savings':
         return list.sort((a, b) => (b.savingsVsPrevious ?? -Infinity) - (a.savingsVsPrevious ?? -Infinity))
       case 'newest':
       default:
-        return list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        return list.sort((a, b) => new Date(b.year, b.month) - new Date(a.year, a.month))
     }
-  }, [filteredBills, sortBy])
+  }, [filteredMonths, sortBy])
 
-  // --- Summary card values ---
-  const totalRecords = enrichedBills.length
+  const totalRecords = enrichedMonths.length
   const avgBill = totalRecords > 0
-    ? enrichedBills.reduce((sum, b) => sum + Number(b.actual_cost), 0) / totalRecords
+    ? enrichedMonths.reduce((sum, b) => sum + b.actual_cost, 0) / totalRecords
     : null
   const avgKwh = totalRecords > 0
-    ? enrichedBills.reduce((sum, b) => sum + Number(b.actual_kwh), 0) / totalRecords
+    ? enrichedMonths.reduce((sum, b) => sum + b.actual_kwh, 0) / totalRecords
     : null
 
   const bestSavingsMonth = useMemo(() => {
-    const withSavings = enrichedBills.filter((b) => b.savingsVsPrevious != null && b.savingsVsPrevious > 0)
+    const withSavings = enrichedMonths.filter((b) => b.savingsVsPrevious != null && b.savingsVsPrevious > 0)
     if (withSavings.length === 0) return null
     return withSavings.reduce((best, b) => (b.savingsVsPrevious > best.savingsVsPrevious ? b : best))
-  }, [enrichedBills])
+  }, [enrichedMonths])
 
   return (
     <div className="px-8 py-10 max-w-7xl mx-auto">
@@ -259,9 +296,6 @@ export default function MonthlyHistory() {
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
         </div>
 
-        {/* Custom date range — plain date inputs rather than a full
-            calendar widget, to stay consistent with the rest of the app's
-            native-input style and avoid adding a new dependency. */}
         <div className="flex items-center gap-2">
           <input
             type="date"
@@ -298,7 +332,7 @@ export default function MonthlyHistory() {
       <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card overflow-hidden shadow-sm">
         {loading ? (
           <p className="text-gray-400 dark:text-gray-500 text-sm p-8">Loading your history…</p>
-        ) : sortedBills.length > 0 ? (
+        ) : sortedMonths.length > 0 ? (
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
               <tr>
@@ -315,21 +349,28 @@ export default function MonthlyHistory() {
             </thead>
 
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {sortedBills.map((bill, index) => (
+              {sortedMonths.map((bill, index) => (
                 <tr
                   key={bill.id}
                   className={`transition hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
                     index % 2 === 1 ? 'bg-gray-50/50 dark:bg-gray-800/20' : ''
                   }`}
                 >
-                  <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
-                    {bill.monthLabel}
+                  <td className="px-6 py-4">
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                      {bill.monthLabel}
+                    </div>
+                    {bill.dayCount < 28 && (
+                      <div className="text-xs text-gray-400 dark:text-gray-500">
+                        {bill.dayCount} {bill.dayCount === 1 ? 'day' : 'days'} logged so far
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">
-                    ₱{Number(bill.actual_cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    ₱{bill.actual_cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
                   <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
-                    {Number(bill.actual_kwh).toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh
+                    {bill.actual_kwh.toLocaleString(undefined, { maximumFractionDigits: 1 })} kWh
                   </td>
                   <td className="px-6 py-4">
                     {bill.savingsVsPrevious == null ? (
@@ -377,11 +418,11 @@ export default function MonthlyHistory() {
               <HistoryIcon size={24} className="text-gray-300 dark:text-gray-600" />
             </div>
             <p className="font-semibold text-gray-900 dark:text-white mb-1">
-              {bills.length === 0 ? 'No history yet' : 'No matching records'}
+              {dailyRows.length === 0 ? 'No history yet' : 'No matching records'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm">
-              {bills.length === 0
-                ? "You haven't logged any monthly bills yet. Once you do, they'll show up here."
+              {dailyRows.length === 0
+                ? "Your daily snapshots will start appearing here once they're logged."
                 : 'Try a different search, year, or date range.'}
             </p>
           </div>

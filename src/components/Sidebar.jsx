@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import { LayoutGrid, Plug, SlidersHorizontal, History, User, Zap, Moon, Sun } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
+import { LogOut } from 'lucide-react'
+import { supabase } from '../lib/supabaseClient'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
@@ -12,6 +14,11 @@ const NAV_ITEMS = [
 const ACCOUNT_ITEMS = [
   { to: '/profile', label: 'Profile', icon: User },
 ]
+
+async function handleLogout() {
+  await supabase.auth.signOut()
+  window.location.href = '/login'
+}
 
 export default function Sidebar() {
   const [isDark, setIsDark] = useTheme()
@@ -51,7 +58,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-8">
-        <p className="text-xs font-semibold text-gray-400 tracking-wide px-4 mb-2">ACCOUNT</p>
+        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 tracking-wide px-4 mb-2">ACCOUNT</p>
         <nav className="flex flex-col gap-1">
           {ACCOUNT_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className={linkClass}>
@@ -59,6 +66,13 @@ export default function Sidebar() {
               {label}
             </NavLink>
           ))}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-danger transition"
+          >
+            <LogOut size={18} />
+            Log Out
+          </button>
         </nav>
       </div>
     </aside>
