@@ -22,6 +22,11 @@ const SORT_OPTIONS = [
 // So before this page can show "one row per month" like the design calls for, we first have
 // to group all the daily rows by calendar month and sum their kwh/cost.
 //
+// CHANGED: each bucket now also carries `appliancesSnapshot` — the real
+// `appliances_snapshot` jsonb captured by the pg_cron job on the most
+// recent day within that month — instead of relying on the live
+// `appliances` table for every month, including old ones.
+//
 // `dayCount` (how many daily snapshots fed into this month) is kept
 // around for transparency — a month with only 3 days logged so far
 // isn't really comparable to a month with a full 30, even though both
@@ -41,6 +46,7 @@ function groupByMonth(dailyRows) {
         month: date.getMonth(),
         actual_kwh: 0,
         actual_cost: 0,
+        appliancesSnapshot: [], // CHANGED: real per-day snapshot, not a live-count approximation
         dayCount: 0,
         created_at: row.created_at, // will end up as the last row's date per month, fine for sorting
       })
@@ -50,6 +56,7 @@ function groupByMonth(dailyRows) {
     if (new Date(row.created_at) >= new Date(bucket.created_at)) {
       bucket.actual_kwh = Number(row.actual_kwh)
       bucket.actual_cost = Number(row.actual_cost)
+      bucket.appliancesSnapshot = row.appliances_snapshot || [] // CHANGED: keep the snapshot from the latest day in this month
     }
     bucket.dayCount += 1
     // Keep created_at as the latest timestamp seen in this month, so
@@ -95,9 +102,12 @@ export default function MonthlyHistory() {
         .single()
       setProfile(profileData)
 
+      // CHANGED: now selects appliances_snapshot alongside the existing
+      // columns, so each daily row carries the appliances that were
+      // active on the day it was generated.
       const { data: billData, error: billError } = await supabase
         .from('monthly_bills')
-        .select('id, actual_kwh, actual_cost, created_at')
+        .select('id, actual_kwh, actual_cost, appliances_snapshot, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: true })
 
@@ -107,6 +117,8 @@ export default function MonthlyHistory() {
         setDailyRows(billData || [])
       }
 
+      // Still fetched — used as a fallback for old rows recorded before
+      // the appliances_snapshot column existed (see enrichedMonths below).
       const { data: applianceData, error: applianceError } = await supabase
         .from('appliances')
         .select('*')
@@ -150,10 +162,12 @@ export default function MonthlyHistory() {
         monthLabel,
         savingsVsPrevious,
         status: bucket.id === mostRecentId ? 'Current' : 'Archived',
-        applianceCount: appliances.length, // still an approximation — see MonthlyReportModal note
+        // CHANGED: exact count from that month's real snapshot instead of
+        // the live appliances.length approximation.
+        applianceCount: bucket.appliancesSnapshot.length,
       }
     })
-  }, [monthlyBuckets, appliances])
+  }, [monthlyBuckets])
 
   const availableYears = useMemo(() => {
     const years = new Set(enrichedMonths.map((b) => b.year))
@@ -340,7 +354,9 @@ export default function MonthlyHistory() {
                 <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Estimated Bill</th>
                 <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Energy Consumption</th>
                 <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Savings vs Previous Month</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400" title="Approximated using your current appliance count — not a historical snapshot.">
+                {/* CHANGED: dropped the "approximated" tooltip — this count now
+                    comes straight from that month's real appliances_snapshot. */}
+                <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">
                   Number of Appliances
                 </th>
                 <th className="px-6 py-4 text-left font-semibold text-gray-500 dark:text-gray-400">Status</th>
@@ -432,7 +448,10 @@ export default function MonthlyHistory() {
       {selectedBill && (
         <MonthlyReportModal
           bill={selectedBill}
-          appliances={appliances}
+          // CHANGED: pass that month's real snapshot; only fall back to the
+          // live `appliances` list for old rows recorded before the
+          // appliances_snapshot column existed (empty snapshot array).
+          appliances={selectedBill.appliancesSnapshot?.length ? selectedBill.appliancesSnapshot : appliances}
           ratePerKwh={ratePerKwh}
           onClose={() => setSelectedBill(null)}
         />

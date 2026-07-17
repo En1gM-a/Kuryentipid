@@ -7,6 +7,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../lib/supabaseClient'
+import ProviderRateMap from '../components/ProviderRateMap'
 
 // ============================================================
 // FALLBACK_RATE_PER_KWH
@@ -480,6 +481,7 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <ProviderRateMap />
       {/* Bottom section: quick preview of appliances (first 4 only).
           Full CRUD management happens on the separate Appliances page —
           this is just a dashboard-level glance. */}

@@ -10,6 +10,7 @@ import { getCategoryStyle } from '../lib/applianceStyles'
 import { useElectricityRate } from '../hooks/useElectricityRate'
 import { calculateMonthlyCost } from '../lib/calculations'
 
+
 // NOTE: the live `energyEfficiency` hook is no longer used directly.
 // Its logic (calling the Gemini edge function) is reused below inside
 // `generateAndSaveEfficiency`, which now only runs once per Philippine
@@ -19,7 +20,8 @@ import { calculateMonthlyCost } from '../lib/calculations'
 // Returns a "YYYY-MM-DD" string representing what the date is in the
 // Philippines (UTC+8, no DST) for a given JS Date. Used to compare
 // "today" vs. the day the last AI suggestion was generated, so we only
-// ever call Gemini once per PH calendar day.
+// ever call Gemini once per PH calendar day. Also reused by
+// `fetchTodaySnapshot` below to check the automatic daily bill snapshot.
 //
 // Trick: shift the timestamp by +8 hours, then read the UTC date parts
 // off of it. Because we've already shifted the clock forward by the PH
@@ -58,6 +60,15 @@ export default function Appliances() {
   // first (see `generateAndSaveEfficiency`).
   const [efficiency, setEfficiency] = useState(null)
   const [efficiencyLoading, setEfficiencyLoading] = useState(false)
+
+  // --- TODAY'S AUTOMATIC BILL SNAPSHOT STATE ---
+  // Populated by `fetchTodaySnapshot()` below. Purely a status check for
+  // the banner rendered under the page header — it reflects whether the
+  // scheduled `create_daily_bill_snapshots()` Postgres job (pg_cron, runs
+  // at 12:00 AM Philippine time) has already inserted today's row into
+  // `monthly_bills`. It never triggers a snapshot itself.
+  const [todaySnapshot, setTodaySnapshot] = useState(null)
+  const [todaySnapshotLoading, setTodaySnapshotLoading] = useState(true)
 
   // --- DELETE CONFIRMATION STATE ---
   // Instead of window.confirm, we track which appliance (if any) is
@@ -142,7 +153,7 @@ export default function Appliances() {
   // regardless of how many times the user visits this page that day.
   // ============================================================
   async function fetchStoredEfficiency(userId, appliancesForGeneration, householdType) {
-    
+
     if (appliancesForGeneration.length < MIN_APPLIANCES_FOR_AI) {
     setEfficiency(null)
     setEfficiencyLoading(false)
@@ -187,6 +198,45 @@ export default function Appliances() {
   }
 
   // ============================================================
+  // Checks whether the automatic daily snapshot (see the
+  // `create_daily_bill_snapshots()` Postgres function, scheduled via
+  // pg_cron at 12:00 AM PH time) has already run for *today*. Queries
+  // `monthly_bills` for a row whose `created_at` falls within today's
+  // Philippine calendar day, converting that PH day into the equivalent
+  // UTC range for the query (PH midnight = UTC 16:00 the previous day).
+  //
+  // This is purely a status check for the banner rendered below the
+  // page header — it does NOT trigger a snapshot itself. If nothing is
+  // found yet, the banner just falls back to its default/muted state.
+  // ============================================================
+  async function fetchTodaySnapshot(userId) {
+    setTodaySnapshotLoading(true)
+
+    const todayPH = getPHDateString()
+    const startUtc = new Date(`${todayPH}T00:00:00+08:00`)
+    const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000)
+
+    const { data, error } = await supabase
+      .from('monthly_bills')
+      .select('id, actual_kwh, actual_cost, appliances_snapshot, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', startUtc.toISOString())
+      .lt('created_at', endUtc.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error("Failed to load today's snapshot:", error)
+      setTodaySnapshot(null)
+    } else {
+      setTodaySnapshot(data || null)
+    }
+
+    setTodaySnapshotLoading(false)
+  }
+
+  // ============================================================
   // Central data-loading function for this page. Pulled out of useEffect
   // so it can be re-run on demand — specifically after the Add Appliance
   // modal successfully inserts a new row (see handleApplianceAdded below),
@@ -200,6 +250,7 @@ export default function Appliances() {
   //   5. appliances         (select)  -> the user's own appliance rows
   //   6. rpc get_appliance_categories -> distinct category list for filters
   //   7. energy_ai_suggestions (select, maybe regenerate) -> AI efficiency
+  //   8. monthly_bills (today's row, if any) -> today's snapshot banner
   // ============================================================
   async function loadAppliancePageData() {
     // --- AUTH CHECK ---
@@ -212,6 +263,10 @@ export default function Appliances() {
       window.location.href = '/login'
       return
     }
+
+    // Kick off the today's-snapshot status check independently — it
+    // doesn't depend on anything else fetched below.
+    fetchTodaySnapshot(user.id)
 
     // --- FETCH APPLIANCE CATALOG ---
     // `appliance_choices` is a shared reference table (brand, model,
@@ -419,6 +474,28 @@ export default function Appliances() {
             <div className="text-primary text-xs font-medium">{providerName}</div>
           </div>
         </div>
+      </div>
+
+      {/* --- TODAY'S SNAPSHOT STATUS --- */}
+      {/* Reflects whether the automatic daily job (create_daily_bill_snapshots,
+          pg_cron at 12:00 AM PH time) has saved today's row yet. Falls back
+          to the same muted/default styling as the empty-state below instead
+          of showing anything stale or misleading when it hasn't run yet. */}
+      <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+        todaySnapshot
+          ? 'border-green-100 dark:border-green-500/20 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400'
+          : 'border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 text-gray-500 dark:text-gray-400'
+      }`}>
+        {todaySnapshotLoading ? (
+          "Checking today's snapshot…"
+        ) : todaySnapshot ? (
+          <>
+            <span className="font-semibold">Today's snapshot saved</span> — {todaySnapshot.appliances_snapshot?.length ?? 0} appliances,{' '}
+            ₱{Number(todaySnapshot.actual_cost).toLocaleString(undefined, { maximumFractionDigits: 0 })} estimated
+          </>
+        ) : (
+          "No snapshot yet today — it saves automatically at 12:00 AM (Philippine time)."
+        )}
       </div>
 
       {/* Toolbar */}
