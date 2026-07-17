@@ -72,8 +72,12 @@ export default function ProviderRateMap() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(API_URL(m, y))
-      if (!res.ok) throw new Error(`Request failed (${res.status})`)
+      const res = await fetch(API_URL(m, y), {
+  headers: {
+    Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+  },
+})
+if (!res.ok) throw new Error(`Request failed (${res.status})`)
       const json = await res.json()
 
       const layerData = json?.chart_specs?.map?.layers?.[0]?.data || []
