@@ -7,7 +7,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../lib/supabaseClient'
-import ProviderRateMap from '../components/ProviderRateMap'
+import Providerratemap from '../components/ProviderRateMap'
 
 // ============================================================
 // FALLBACK_RATE_PER_KWH
