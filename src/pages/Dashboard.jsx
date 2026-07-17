@@ -481,7 +481,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <ProviderRateMap />
+      <Providerratemap />
       {/* Bottom section: quick preview of appliances (first 4 only).
           Full CRUD management happens on the separate Appliances page —
           this is just a dashboard-level glance. */}
