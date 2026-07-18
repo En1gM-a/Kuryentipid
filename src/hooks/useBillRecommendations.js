@@ -112,16 +112,42 @@ export function useBillRecommendations(appliances, ratePerKwh) {
       return
     }
 
-    const { data, error: fnError } = await supabase.functions.invoke('bill-recommendations', {
-      body: { appliances, ratePerKwh },
-    })
+const { data, error: fnError } = await supabase.functions.invoke('bill-recommendations', {
+  body: { appliances, ratePerKwh },
+})
 
-    if (fnError || data?.error) {
-      console.error('bill-recommendations error:', fnError || data?.error)
-      setError(fnError || data?.error)
-      setLoading(false)
-      return
+if (fnError || data?.error) {
+  console.error('bill-recommendations error:', fnError || data?.error)
+
+  // The token was already consumed by consume_ai_recommendation_token
+  // above, but the actual generation failed — refund it so the user
+  // isn't charged for a request that never succeeded.
+  const { data: refundRow, error: refundError } = await supabase
+    .from('ai_recommendation_usage')
+    .select('tokens_used')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (refundError) {
+    console.error('Failed to read usage row for refund:', refundError)
+  } else if (refundRow) {
+    const refundedTokens = Math.max((refundRow.tokens_used || 0) - 1, 0)
+    const { error: updateError } = await supabase
+      .from('ai_recommendation_usage')
+      .update({ tokens_used: refundedTokens })
+      .eq('user_id', user.id)
+
+    if (updateError) {
+      console.error('Failed to refund token:', updateError)
+    } else {
+      setRemaining(Math.max(DAILY_LIMIT - refundedTokens, 0))
     }
+  }
+
+  setError({ message: 'Oops, something went wrong. Please try again.' })
+  setLoading(false)
+  return
+}
 
     const newRecommendations = data.recommendations || []
 
