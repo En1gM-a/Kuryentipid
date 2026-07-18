@@ -213,7 +213,7 @@ if (!res.ok) throw new Error(`Request failed (${res.status})`)
               center={PH_CENTER}
               zoom={PH_ZOOM}
               style={{ height: '100%', width: '100%', background: '#eef3f8' }}
-              scrollWheelZoom={false}
+              scrollWheelZoom={true}
             >
               {/* CartoDB Positron: light, low-clutter basemap that matches the
                   clean look of the reference screenshot better than default OSM tiles. */}
