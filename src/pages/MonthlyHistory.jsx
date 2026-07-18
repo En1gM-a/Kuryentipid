@@ -73,6 +73,7 @@ function groupByMonth(dailyRows) {
 
 export default function MonthlyHistory() {
   const [profile, setProfile] = useState(null)
+  const [providerName, setProviderName] = useState('')
   const [dailyRows, setDailyRows] = useState([])
   const [appliances, setAppliances] = useState([])
   const [loading, setLoading] = useState(true)
@@ -101,6 +102,15 @@ export default function MonthlyHistory() {
         .eq('id', user.id)
         .single()
       setProfile(profileData)
+
+      if (profileData?.provider_id) {
+        const { data: providerData } = await supabase
+          .from('providers')
+          .select('name')
+          .eq('id', profileData.provider_id)
+          .single()
+        setProviderName(providerData?.name || 'Unknown Provider')
+      }
 
       // CHANGED: now selects appliances_snapshot alongside the existing
       // columns, so each daily row carries the appliances that were
@@ -222,15 +232,24 @@ export default function MonthlyHistory() {
     return withSavings.reduce((best, b) => (b.savingsVsPrevious > best.savingsVsPrevious ? b : best))
   }, [enrichedMonths])
 
+  const displayName = profile?.full_name || '....'
+  const providerName = profile?.provider_name || 'Unknown Provider'
+
   return (
     <div className="px-8 py-10 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Monthly History</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
-          Review your previous electricity calculations, monitor spending trends, and compare
-          your household energy usage over time.
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Monthly History</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            Review your previous electricity calculations, monitor spending trends, and compare
+            your household energy usage over time.
+          </p>
+        </div>
+        <div>
+          <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
+          <div className="text-primary text-xs font-medium">{providerName}</div>
+        </div>
       </div>
 
       {/* Summary cards */}

@@ -190,12 +190,6 @@ export default function BillOptimizer() {
         </div>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
-            {/* Placeholder avatar — not tied to any real user upload yet */}
-            <img
-              src="https://i.pravatar.cc/40?img=12"
-              alt="User avatar"
-              className="w-10 h-10 rounded-full object-cover"
-            />
             <div>
               <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
               <div className="text-primary text-xs font-medium">{providerName}</div>

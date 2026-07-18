@@ -293,13 +293,6 @@ export default function Dashboard() {
             <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-danger" />
           </button>
           <div className="flex items-center gap-3">
-            {/* TODO: this avatar is a static placeholder (pravatar.cc), not
-                the real user's photo. Hook up real avatar storage later. */}
-            <img
-              src="https://i.pravatar.cc/40?img=12"
-              alt="User avatar"
-              className="w-10 h-10 rounded-full object-cover"
-            />
             <div>
               <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
               <div className="text-primary text-xs font-medium">
@@ -487,9 +480,10 @@ export default function Dashboard() {
           this is just a dashboard-level glance. */}
       <div className="border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-card p-6 shadow-sm mt-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">All Appliances</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Appliances</h2>
           {hasAppliances && (
-            <button className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
+            <button onClick={() => window.location.href = '/appliances'}
+            className="flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
               Manage All Appliances <ChevronRight size={16} />
             </button>
           )}
