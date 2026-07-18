@@ -233,7 +233,7 @@ export default function MonthlyHistory() {
   }, [enrichedMonths])
 
   const displayName = profile?.full_name || '....'
-  const providerName = profile?.provider_name || 'Unknown Provider'
+  
 
   return (
     <div className="px-8 py-10 max-w-7xl mx-auto">
