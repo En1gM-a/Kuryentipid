@@ -276,6 +276,7 @@ export default function Dashboard() {
   // Friendly display name. Provider name + rate now come straight from the
   // `providers` / `electricity_rates` tables (fetched above), not a
   // hardcoded array, so this can never drift out of sync with the DB.
+  //tweak
   const displayName = profile?.full_name || '....'
   const firstName = displayName.split(' ')[0] || '....'
 
