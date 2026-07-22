@@ -203,23 +203,6 @@ export default function Login() {
             Join thousands of Filipinos saving on their electricity bills with
             smart analytics and real-time rate tracking.
           </p>
-
-          <div className="bg-white/70 dark:bg-white/5 rounded-card p-5 flex justify-around text-center shadow-sm">
-            <div>
-              <div className="text-xl font-bold text-primary">10k+</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 tracking-wide">USERS</div>
-            </div>
-            <div className="border-l border-gray-200 dark:border-gray-700" />
-            <div>
-              <div className="text-xl font-bold text-primary">12%</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 tracking-wide">AVG SAVINGS</div>
-            </div>
-            <div className="border-l border-gray-200 dark:border-gray-700" />
-            <div>
-              <div className="text-xl font-bold text-primary">4.9/5</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 tracking-wide">RATING</div>
-            </div>
-          </div>
         </div>
       </div>
 

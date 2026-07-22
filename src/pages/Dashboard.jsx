@@ -290,10 +290,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <button className="relative w-10 h-10 rounded-full border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-            <Bell size={18} />
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-danger" />
-          </button>
           <div className="flex items-center gap-3">
             <div>
               <div className="font-semibold text-gray-900 dark:text-white text-sm">{displayName}</div>
